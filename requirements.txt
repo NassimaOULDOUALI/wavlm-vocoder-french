@@ -1,0 +1,46 @@
+# Deep Learning
+torch>=2.0.0
+torchaudio>=2.0.0
+pytorch-lightning>=2.0.0
+
+# Audio Processing
+librosa>=0.10.0
+soundfile>=0.12.0
+pydub>=0.25.1
+pyworld>=0.3.2
+crepe>=0.0.12
+resampy>=0.4.2
+
+# WavLM
+transformers>=4.30.0
+
+# Evaluation Metrics
+pesq>=0.0.4
+pystoi>=0.3.3
+
+# Data Processing
+numpy>=1.24.0
+scipy>=1.10.0
+pandas>=2.0.0
+h5py>=3.8.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+tensorboard>=2.13.0
+
+# Configuration
+pyyaml>=6.0
+omegaconf>=2.3.0
+
+# Utils
+tqdm>=4.65.0
+colorama>=0.4.6
+wandb>=0.15.0  # Optional: for experiment tracking
+
+# Development
+pytest>=7.3.0
+black>=23.3.0
+flake8>=6.0.0
+ipython>=8.12.0
+jupyter>=1.0.0
