@@ -61,7 +61,7 @@ This repository implements a neural vocoder that reconstructs audio from frozen 
 ### 1. Installation
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/wavlm-vocoder-french.git
+git clone https://github.com/NassimaOULDOUALI/wavlm-vocoder-french.git
 cd wavlm-vocoder-french
 
 # Install dependencies
