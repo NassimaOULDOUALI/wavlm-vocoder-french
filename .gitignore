@@ -1,5 +1,6 @@
 # Python
 __pycache__/
+*.py[cod]
 *$py.class
 *.so
 .Python
@@ -34,31 +35,42 @@ env/
 
 # Jupyter Notebook
 .ipynb_checkpoints
-*.ipynb
 
-# Data
-data/raw/
-data/processed/
+# Data (too large for git)
+data/raw/**
+data/processed/**
 *.wav
 *.flac
 *.mp3
+*.ogg
+*.m4a
 
-# Model checkpoints
-outputs/checkpoints/*.pt
-outputs/checkpoints/*.pth
+# Model outputs
+outputs/checkpoints/**
+outputs/logs/**
+outputs/samples/**
+*.pt
+*.pth
 *.ckpt
 
 # Logs
-outputs/logs/
+logs/
 *.log
-runs/
 wandb/
+runs/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Temporary files
+# Temporary
 tmp/
 temp/
 *.tmp
+
+# Keep directory structure
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!outputs/checkpoints/.gitkeep
+!outputs/logs/.gitkeep
+!outputs/samples/.gitkeep

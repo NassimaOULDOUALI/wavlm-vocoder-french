@@ -1,0 +1,67 @@
+# WavLM Vocoder - Base Configuration
+# No GAN training (spectral losses only)
+
+model:
+  wavlm_model_name: "microsoft/wavlm-base-plus"
+  hidden_dim: 256
+  num_adapter_layers: 3
+  kernel_size: 7
+  freeze_wavlm: true
+  dropout: 0.1
+  
+  # Layer fusion
+  num_layers: 12  # Use all 12 layers
+  fusion_type: "learned"  # or "average"
+
+loss:
+  # Reconstruction losses
+  l1_weight: 2.0
+  stft_weight: 1.0
+  
+  # GAN losses (disabled for base config)
+  use_gan: false
+  adv_weight: 1.0
+  fm_weight: 2.0
+
+data:
+  train_dir: "/path/to/your/train/data"
+  val_dir: "/path/to/your/val/data"
+  segment_length: 32000  # 2 seconds at 16kHz
+  sample_rate: 16000
+  use_rms_norm: false
+  rms_threshold: 0.005
+  peak_target: 0.99
+
+training:
+  # Optimizer
+  lr: 1e-4
+  betas: [0.9, 0.999]
+  weight_decay: 0.01
+  
+  # Training
+  batch_size: 16  # per GPU
+  num_epochs: 100
+  grad_clip: 1.0
+  use_amp: true
+  
+  # Checkpointing
+  output_dir: "./outputs"
+  save_interval: 5000
+  eval_interval: 10000
+  
+  # Data loading
+  num_workers: 4
+  
+  # Resume
+  resume: false
+  checkpoint_path: null
+  
+  # Distributed
+  distributed: true
+  world_size: 4
+
+logging:
+  log_interval: 10
+  tensorboard: true
+  wandb: false
+  wandb_project: "wavlm-vocoder"
