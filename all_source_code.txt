@@ -1,0 +1,1842 @@
+=== src/losses/reconstruction.py ===
+"""
+Reconstruction Losses
+=====================
+
+Spectral and time-domain losses for audio reconstruction.
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class L1Loss(nn.Module):
+    """Simple L1 time-domain loss."""
+    
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, pred, target):
+        """
+        Args:
+            pred: (B, T) predicted waveform
+            target: (B, T) target waveform
+            
+        Returns:
+            Scalar loss
+        """
+        return F.l1_loss(pred, target)
+
+
+class MultiScaleSTFTLoss(nn.Module):
+    """
+    Multi-Scale STFT Loss.
+    
+    Computes spectral convergence and log-magnitude L1 loss
+    across multiple FFT scales.
+    """
+    
+    def __init__(
+        self,
+        fft_sizes=[2048, 1024, 512, 256, 128],
+        hop_sizes=[512, 256, 128, 64, 32],
+        win_sizes=[2048, 1024, 512, 256, 128],
+        factor_sc=0.5,
+        factor_mag=0.5,
+        eps=1e-7
+    ):
+        super().__init__()
+        
+        assert len(fft_sizes) == len(hop_sizes) == len(win_sizes)
+        
+        self.fft_sizes = fft_sizes
+        self.hop_sizes = hop_sizes
+        self.win_sizes = win_sizes
+        self.factor_sc = factor_sc
+        self.factor_mag = factor_mag
+        self.eps = eps
+    
+    def forward(self, pred, target):
+        """
+        Args:
+            pred: (B, T) predicted waveform
+            target: (B, T) target waveform
+            
+        Returns:
+            Scalar loss
+        """
+        total_loss = 0.0
+        
+        for fft_size, hop_size, win_size in zip(
+            self.fft_sizes, self.hop_sizes, self.win_sizes
+        ):
+            # Create window
+            window = torch.hann_window(win_size).to(pred.device)
+            
+            # Compute STFT
+            S_pred = torch.stft(
+                pred,
+                n_fft=fft_size,
+                hop_length=hop_size,
+                win_length=win_size,
+                window=window,
+                return_complex=True
+            )
+            
+            S_target = torch.stft(
+                target,
+                n_fft=fft_size,
+                hop_length=hop_size,
+                win_length=win_size,
+                window=window,
+                return_complex=True
+            )
+            
+            # Magnitude
+            mag_pred = torch.abs(S_pred) + self.eps
+            mag_target = torch.abs(S_target) + self.eps
+            
+            # Spectral Convergence Loss
+            sc_loss = torch.norm(mag_target - mag_pred, p='fro') / (
+                torch.norm(mag_target, p='fro') + self.eps
+            )
+            
+            # Log-Magnitude L1 Loss
+            log_mag_pred = torch.log(mag_pred)
+            log_mag_target = torch.log(mag_target)
+            mag_loss = F.l1_loss(log_mag_pred, log_mag_target)
+            
+            # Weighted combination
+            scale_loss = self.factor_sc * sc_loss + self.factor_mag * mag_loss
+            total_loss += scale_loss
+        
+        # Average across scales
+        total_loss = total_loss / len(self.fft_sizes)
+        
+        return total_loss
+
+
+class MelSpectrogramLoss(nn.Module):
+    """
+    Mel-Spectrogram L1 Loss.
+    
+    Useful for perceptual quality.
+    """
+    
+    def __init__(
+        self,
+        sample_rate=16000,
+        n_fft=1024,
+        hop_length=256,
+        n_mels=80,
+        f_min=0,
+        f_max=8000
+    ):
+        super().__init__()
+        
+        self.mel_transform = torchaudio.transforms.MelSpectrogram(
+            sample_rate=sample_rate,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            n_mels=n_mels,
+            f_min=f_min,
+            f_max=f_max
+        )
+    
+    def forward(self, pred, target):
+        """
+        Args:
+            pred: (B, T) predicted waveform
+            target: (B, T) target waveform
+            
+        Returns:
+            Scalar loss
+        """
+        mel_pred = self.mel_transform(pred)
+        mel_target = self.mel_transform(target)
+        
+        # Log scale
+        log_mel_pred = torch.log(mel_pred + 1e-5)
+        log_mel_target = torch.log(mel_target + 1e-5)
+        
+        return F.l1_loss(log_mel_pred, log_mel_target)
+=== src/losses/__init__.py ===
+=== src/losses/gan.py ===
+"""
+GAN Losses
+==========
+
+Adversarial and feature matching losses.
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class GeneratorAdversarialLoss(nn.Module):
+    """
+    Generator adversarial loss.
+    
+    Encourages generator to fool discriminators.
+    """
+    
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, disc_outputs):
+        """
+        Args:
+            disc_outputs: List of discriminator outputs for fake samples
+            
+        Returns:
+            Scalar loss
+        """
+        loss = 0
+        for disc_out in disc_outputs:
+            # We want discriminator to output 1 (real) for fake samples
+            loss += F.mse_loss(disc_out, torch.ones_like(disc_out))
+        
+        return loss / len(disc_outputs)
+
+
+class DiscriminatorAdversarialLoss(nn.Module):
+    """
+    Discriminator adversarial loss.
+    
+    Encourages discriminator to classify real/fake correctly.
+    """
+    
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, disc_real_outputs, disc_fake_outputs):
+        """
+        Args:
+            disc_real_outputs: List of discriminator outputs for real samples
+            disc_fake_outputs: List of discriminator outputs for fake samples
+            
+        Returns:
+            Scalar loss
+        """
+        loss = 0
+        
+        for real_out, fake_out in zip(disc_real_outputs, disc_fake_outputs):
+            # Real samples should be classified as 1
+            real_loss = F.mse_loss(real_out, torch.ones_like(real_out))
+            
+            # Fake samples should be classified as 0
+            fake_loss = F.mse_loss(fake_out, torch.zeros_like(fake_out))
+            
+            loss += (real_loss + fake_loss)
+        
+        return loss / len(disc_real_outputs)
+
+
+class FeatureMatchingLoss(nn.Module):
+    """
+    Feature Matching Loss.
+    
+    Matches intermediate features between real and fake samples.
+    This helps stabilize GAN training.
+    """
+    
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, disc_real_features, disc_fake_features):
+        """
+        Args:
+            disc_real_features: List of lists of intermediate features for real
+            disc_fake_features: List of lists of intermediate features for fake
+            
+        Returns:
+            Scalar loss
+        """
+        loss = 0
+        num_features = 0
+        
+        for real_feats, fake_feats in zip(disc_real_features, disc_fake_features):
+            for real_feat, fake_feat in zip(real_feats, fake_feats):
+                loss += F.l1_loss(real_feat, fake_feat)
+                num_features += 1
+        
+        return loss / num_features if num_features > 0 else 0
+=== src/losses/combined.py ===
+"""
+Combined Loss
+=============
+
+Combines reconstruction and GAN losses.
+"""
+
+import torch
+import torch.nn as nn
+from .reconstruction import L1Loss, MultiScaleSTFTLoss
+from .gan import GeneratorAdversarialLoss, FeatureMatchingLoss
+
+
+class CombinedLoss(nn.Module):
+    """
+    Combined loss for training WavLM vocoder.
+    
+    Supports two modes:
+        - No GAN: L1 + Multi-Scale STFT
+        - With GAN: L1 + Multi-Scale STFT + Adversarial + Feature Matching
+    """
+    
+    def __init__(self, config):
+        super().__init__()
+        
+        self.config = config
+        
+        # Reconstruction losses (always used)
+        self.l1_loss = L1Loss()
+        self.stft_loss = MultiScaleSTFTLoss()
+        
+        # GAN losses (optional)
+        self.use_gan = config.loss.use_gan
+        if self.use_gan:
+            self.adv_loss = GeneratorAdversarialLoss()
+            self.fm_loss = FeatureMatchingLoss()
+        
+        # Weights
+        self.l1_weight = config.loss.l1_weight
+        self.stft_weight = config.loss.stft_weight
+        
+        if self.use_gan:
+            self.adv_weight = config.loss.adv_weight
+            self.fm_weight = config.loss.fm_weight
+    
+    def forward(self, pred, target, disc_outputs=None, disc_features=None):
+        """
+        Compute combined loss.
+        
+        Args:
+            pred: (B, T) predicted waveform
+            target: (B, T) target waveform
+            disc_outputs: Optional list of discriminator outputs (for GAN)
+            disc_features: Optional tuple of (real_features, fake_features) (for GAN)
+            
+        Returns:
+            total_loss: Scalar total loss
+            loss_dict: Dictionary of individual losses
+        """
+        # Reconstruction losses
+        l1 = self.l1_loss(pred, target)
+        stft = self.stft_loss(pred, target)
+        
+        total_loss = self.l1_weight * l1 + self.stft_weight * stft
+        
+        loss_dict = {
+            'l1_loss': l1.item(),
+            'stft_loss': stft.item(),
+        }
+        
+        # GAN losses (if enabled)
+        if self.use_gan and disc_outputs is not None:
+            # Adversarial loss
+            adv = self.adv_loss(disc_outputs)
+            total_loss += self.adv_weight * adv
+            loss_dict['adv_loss'] = adv.item()
+            
+            # Feature matching loss
+            if disc_features is not None:
+                real_feats, fake_feats = disc_features
+                fm = self.fm_loss(real_feats, fake_feats)
+                total_loss += self.fm_weight * fm
+                loss_dict['fm_loss'] = fm.item()
+        
+        loss_dict['total_loss'] = total_loss.item()
+        
+        return total_loss, loss_dict
+=== src/utils/logger.py ===
+=== src/utils/checkpoint.py ===
+"""
+Checkpoint Utilities
+====================
+"""
+
+import torch
+from pathlib import Path
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def save_checkpoint(
+    model,
+    optimizer,
+    scaler,
+    epoch,
+    step,
+    config,
+    save_dir,
+    filename='checkpoint.pt',
+    is_best=False
+):
+    """
+    Save training checkpoint.
+    
+    Args:
+        model: Model (or DDP model)
+        optimizer: Optimizer
+        scaler: GradScaler for AMP
+        epoch: Current epoch
+        step: Global step
+        config: Configuration
+        save_dir: Directory to save checkpoint
+        filename: Checkpoint filename
+        is_best: Whether this is the best model so far
+    """
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Extract state dict from DDP if needed
+    if hasattr(model, 'module'):
+        model_state = model.module.state_dict()
+    else:
+        model_state = model.state_dict()
+    
+    checkpoint = {
+        'epoch': epoch,
+        'step': step,
+        'model_state_dict': model_state,
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scaler_state_dict': scaler.state_dict(),
+        'config': config,
+    }
+    
+    # Save checkpoint
+    save_path = save_dir / filename
+    torch.save(checkpoint, save_path)
+    logger.info(f"Checkpoint saved: {save_path}")
+    
+    # Save as latest
+    latest_path = save_dir / 'checkpoint_latest.pt'
+    torch.save(checkpoint, latest_path)
+    
+    # Save as best if applicable
+    if is_best:
+        best_path = save_dir / 'checkpoint_best.pt'
+        torch.save(checkpoint, best_path)
+        logger.info(f"Best checkpoint saved: {best_path}")
+
+
+def load_checkpoint(checkpoint_path, model, optimizer=None, scaler=None):
+    """
+    Load checkpoint.
+    
+    Args:
+        checkpoint_path: Path to checkpoint file
+        model: Model to load weights into
+        optimizer: Optional optimizer to load state
+        scaler: Optional scaler to load state
+        
+    Returns:
+        epoch, step from checkpoint
+    """
+    logger.info(f"Loading checkpoint: {checkpoint_path}")
+    
+    checkpoint = torch.load(checkpoint_path, map_location='cpu')
+    
+    # Load model state
+    if hasattr(model, 'module'):
+        model.module.load_state_dict(checkpoint['model_state_dict'])
+    else:
+        model.load_state_dict(checkpoint['model_state_dict'])
+    
+    # Load optimizer state
+    if optimizer is not None and 'optimizer_state_dict' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    
+    # Load scaler state
+    if scaler is not None and 'scaler_state_dict' in checkpoint:
+        scaler.load_state_dict(checkpoint['scaler_state_dict'])
+    
+    epoch = checkpoint.get('epoch', 0)
+    step = checkpoint.get('step', 0)
+    
+    logger.info(f"Checkpoint loaded: epoch={epoch}, step={step}")
+    
+    return epoch, step
+=== src/utils/__init__.py ===
+=== src/utils/audio_processing.py ===
+=== src/utils/logging.py ===
+"""
+Logging Utilities
+=================
+"""
+
+import logging
+import sys
+from pathlib import Path
+
+
+def setup_logging(log_dir, rank=0, level=logging.INFO):
+    """
+    Setup logging configuration.
+    
+    Args:
+        log_dir: Directory for log files
+        rank: Process rank (for distributed training)
+        level: Logging level
+        
+    Returns:
+        Logger instance
+    """
+    log_dir = Path(log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Create logger
+    logger = logging.getLogger()
+    logger.setLevel(level if rank == 0 else logging.WARNING)
+    logger.handlers.clear()
+    
+    # Format
+    formatter = logging.Formatter(
+        f'[%(asctime)s][Rank {rank}][%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    
+    # File handler
+    if rank == 0:
+        fh = logging.FileHandler(log_dir / 'train.log')
+        fh.setLevel(level)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+    
+    # Console handler (only for rank 0)
+    if rank == 0:
+        ch = logging.StreamHandler(sys.stdout)
+        ch.setLevel(level)
+        ch.setFormatter(formatter)
+        logger.addHandler(ch)
+    
+    return logger
+=== src/utils/config.py ===
+"""
+Configuration Utilities
+=======================
+"""
+
+import yaml
+from omegaconf import OmegaConf
+from pathlib import Path
+
+
+def load_config(config_path):
+    """
+    Load configuration from YAML file.
+    
+    Supports inheritance via _base_ key.
+    
+    Args:
+        config_path: Path to config file
+        
+    Returns:
+        OmegaConf configuration object
+    """
+    config_path = Path(config_path)
+    
+    with open(config_path, 'r') as f:
+        config_dict = yaml.safe_load(f)
+    
+    # Handle inheritance
+    if '_base_' in config_dict:
+        base_path = config_path.parent / config_dict['_base_']
+        base_config = load_config(base_path)
+        
+        # Merge configs (current overrides base)
+        config = OmegaConf.merge(base_config, OmegaConf.create(config_dict))
+    else:
+        config = OmegaConf.create(config_dict)
+    
+    return config
+
+
+def save_config(config, save_path):
+    """
+    Save configuration to YAML file.
+    
+    Args:
+        config: OmegaConf configuration object
+        save_path: Path to save file
+    """
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    with open(save_path, 'w') as f:
+        OmegaConf.save(config, f)
+=== src/utils/audio.py ===
+"""
+Audio Utilities
+===============
+"""
+
+import torch
+import torchaudio
+
+
+def load_audio(audio_path, target_sr=16000):
+    """
+    Load audio file and convert to target sample rate.
+    
+    Args:
+        audio_path: Path to audio file
+        target_sr: Target sample rate
+        
+    Returns:
+        waveform: (T,) mono waveform
+        sr: Sample rate
+    """
+    waveform, sr = torchaudio.load(audio_path)
+    
+    # Convert to mono
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)
+    
+    # Resample if needed
+    if sr != target_sr:
+        resampler = torchaudio.transforms.Resample(sr, target_sr)
+        waveform = resampler(waveform)
+        sr = target_sr
+    
+    return waveform.squeeze(0), sr
+
+
+def save_audio(waveform, save_path, sample_rate=16000):
+    """
+    Save audio waveform to file.
+    
+    Args:
+        waveform: (T,) or (1, T) waveform
+        save_path: Path to save file
+        sample_rate: Sample rate
+    """
+    if waveform.dim() == 1:
+        waveform = waveform.unsqueeze(0)
+    
+    torchaudio.save(save_path, waveform.cpu(), sample_rate)
+
+
+def process_long_audio(model, audio, chunk_size=320000, overlap=80000, device='cuda'):
+    """
+    Process long audio with chunking and overlap.
+    
+    Args:
+        model: WavLM2Audio model
+        audio: (T,) waveform
+        chunk_size: Chunk size in samples
+        overlap: Overlap size in samples
+        device: Device to run on
+        
+    Returns:
+        (T,) reconstructed waveform
+    """
+    if len(audio) <= chunk_size:
+        # Short audio, process directly
+        with torch.no_grad():
+            audio_batch = audio.unsqueeze(0).to(device)
+            output = model(audio_batch)
+            return output.squeeze(0).cpu()
+    
+    # Process in chunks
+    step = chunk_size - overlap
+    num_chunks = (len(audio) - overlap) // step + 1
+    
+    output_chunks = []
+    
+    for i in range(num_chunks):
+        start = i * step
+        end = min(start + chunk_size, len(audio))
+        
+        chunk = audio[start:end]
+        
+        # Pad if needed
+        if len(chunk) < chunk_size:
+            pad_size = chunk_size - len(chunk)
+            chunk = torch.nn.functional.pad(chunk, (0, pad_size))
+        
+        # Process chunk
+        with torch.no_grad():
+            chunk_batch = chunk.unsqueeze(0).to(device)
+            output_chunk = model(chunk_batch).squeeze(0).cpu()
+        
+        # Crop overlap
+        if i == 0:
+            output_chunks.append(output_chunk[:chunk_size - overlap // 2])
+        elif i == num_chunks - 1:
+            output_chunks.append(output_chunk[overlap // 2:end - start])
+        else:
+            output_chunks.append(output_chunk[overlap // 2:chunk_size - overlap // 2])
+    
+    # Concatenate
+    output = torch.cat(output_chunks, dim=0)
+    
+    return output
+=== src/trainers/__init__.py ===
+=== src/trainers/trainer.py ===
+"""
+Trainer for WavLM Vocoder
+=========================
+
+Handles distributed training with DDP, AMP, and checkpointing.
+"""
+
+import os
+import sys
+import signal
+import logging
+from pathlib import Path
+
+import torch
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader, DistributedSampler
+from torch.cuda.amp import autocast, GradScaler
+from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+
+from ..models.wavlm_vocoder import WavLM2Audio
+from ..models.discriminator import MultiPeriodDiscriminator, MultiScaleDiscriminator
+from ..losses.combined import CombinedLoss
+from ..losses.gan import DiscriminatorAdversarialLoss
+from ..data.dataset import AudioDataset
+from ..data.collate import collate_fn
+from ..utils.checkpoint import save_checkpoint, load_checkpoint
+from ..utils.audio import save_audio
+
+logger = logging.getLogger(__name__)
+
+
+class Trainer:
+    """
+    Distributed trainer for WavLM Vocoder.
+    
+    Supports:
+        - DDP multi-GPU training
+        - AMP (Automatic Mixed Precision)
+        - GAN training (optional)
+        - Checkpointing and resuming
+        - TensorBoard logging
+    """
+    
+    def __init__(self, config):
+        """
+        Initialize trainer.
+        
+        Args:
+            config: Configuration object
+        """
+        self.config = config
+        
+        # Setup distributed
+        self.rank, self.local_rank, self.world_size = self._init_distributed()
+        self.device = torch.device(f'cuda:{self.local_rank}')
+        
+        logger.info(f"Trainer initialized on rank {self.rank}/{self.world_size}")
+        
+        # Setup directories
+        self.output_dir = Path(config.training.output_dir)
+        self.ckpt_dir = self.output_dir / 'checkpoints'
+        self.sample_dir = self.output_dir / 'samples'
+        self.log_dir = self.output_dir / 'logs'
+        
+        if self.rank == 0:
+            self.ckpt_dir.mkdir(parents=True, exist_ok=True)
+            self.sample_dir.mkdir(parents=True, exist_ok=True)
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # TensorBoard
+        self.writer = SummaryWriter(self.log_dir) if self.rank == 0 else None
+        
+        # Training state
+        self.global_step = 0
+        self.current_epoch = 0
+        
+        # Setup model, data, optimizers
+        self._setup_model()
+        self._setup_data()
+        self._setup_optimizers()
+        self._setup_loss()
+        
+        # Resume if requested
+        if config.training.resume and config.training.checkpoint_path:
+            self._resume()
+        
+        # SIGTERM handler
+        signal.signal(signal.SIGTERM, self._handle_sigterm)
+        
+        logger.info("Trainer setup complete")
+    
+    def _init_distributed(self):
+        """Initialize distributed training."""
+        if 'RANK' not in os.environ:
+            return 0, 0, 1
+        
+        rank = int(os.environ['RANK'])
+        local_rank = int(os.environ['LOCAL_RANK'])
+        world_size = int(os.environ['WORLD_SIZE'])
+        
+        dist.init_process_group(backend='nccl', init_method='env://')
+        torch.cuda.set_device(local_rank)
+        
+        return rank, local_rank, world_size
+    
+    def _setup_model(self):
+        """Setup generator and discriminators."""
+        logger.info("Creating models...")
+        
+        # Generator
+        self.generator = WavLM2Audio(self.config).to(self.device)
+        
+        # Discriminators (if using GAN)
+        if self.config.loss.use_gan:
+            self.mpd = MultiPeriodDiscriminator().to(self.device)
+            self.msd = MultiScaleDiscriminator().to(self.device)
+        
+        # Wrap with DDP
+        if self.world_size > 1:
+            self.generator = DDP(
+                self.generator,
+                device_ids=[self.local_rank],
+                find_unused_parameters=False
+            )
+            
+            if self.config.loss.use_gan:
+                self.mpd = DDP(self.mpd, device_ids=[self.local_rank])
+                self.msd = DDP(self.msd, device_ids=[self.local_rank])
+        
+        num_params = self.generator.module.get_num_params() if hasattr(self.generator, 'module') else self.generator.get_num_params()
+        logger.info(f"Generator params: {num_params:,}")
+    
+    def _setup_data(self):
+        """Setup datasets and dataloaders."""
+        logger.info("Loading datasets...")
+        
+        # Train dataset
+        train_dataset = AudioDataset(self.config, split='train')
+        
+        train_sampler = DistributedSampler(
+            train_dataset,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=True
+        ) if self.world_size > 1 else None
+        
+        self.train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.config.training.batch_size,
+            sampler=train_sampler,
+            shuffle=(train_sampler is None),
+            num_workers=self.config.training.num_workers,
+            pin_memory=True,
+            collate_fn=collate_fn,
+            drop_last=True
+        )
+        
+        self.train_sampler = train_sampler
+        
+        logger.info(f"Train dataset: {len(train_dataset)} samples")
+    
+    def _setup_optimizers(self):
+        """Setup optimizers and schedulers."""
+        # Generator optimizer
+        self.opt_g = torch.optim.AdamW(
+            self.generator.parameters(),
+            lr=self.config.training.lr,
+            betas=self.config.training.betas,
+            weight_decay=self.config.training.weight_decay
+        )
+        
+        # Discriminator optimizer (if using GAN)
+        if self.config.loss.use_gan:
+            disc_params = list(self.mpd.parameters()) + list(self.msd.parameters())
+            self.opt_d = torch.optim.AdamW(
+                disc_params,
+                lr=self.config.training.get('lr_discriminator', self.config.training.lr),
+                betas=self.config.training.betas,
+                weight_decay=self.config.training.weight_decay
+            )
+        
+        # AMP scaler
+        self.scaler_g = GradScaler(enabled=self.config.training.use_amp)
+        if self.config.loss.use_gan:
+            self.scaler_d = GradScaler(enabled=self.config.training.use_amp)
+        
+        # Performance optimizations
+        if torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
+    
+    def _setup_loss(self):
+        """Setup loss functions."""
+        self.criterion = CombinedLoss(self.config).to(self.device)
+        
+        if self.config.loss.use_gan:
+            self.disc_loss = DiscriminatorAdversarialLoss().to(self.device)
+    
+    def _resume(self):
+        """Resume from checkpoint."""
+        ckpt_path = self.config.training.checkpoint_path
+        
+        if not Path(ckpt_path).exists():
+            logger.warning(f"Checkpoint not found: {ckpt_path}")
+            return
+        
+        logger.info(f"Resuming from {ckpt_path}")
+        
+        self.current_epoch, self.global_step = load_checkpoint(
+            ckpt_path,
+            self.generator,
+            self.opt_g,
+            self.scaler_g
+        )
+        
+        logger.info(f"Resumed: epoch={self.current_epoch}, step={self.global_step}")
+    
+    def _handle_sigterm(self, signum, frame):
+        """Handle SIGTERM (preemption)."""
+        if self.rank == 0:
+            logger.warning("SIGTERM received, saving checkpoint...")
+            save_checkpoint(
+                self.generator,
+                self.opt_g,
+                self.scaler_g,
+                self.current_epoch,
+                self.global_step,
+                self.config,
+                self.ckpt_dir,
+                filename='checkpoint_sigterm.pt'
+            )
+        
+        if self.world_size > 1:
+            dist.barrier()
+        
+        sys.exit(0)
+    
+    def train_epoch(self):
+        """Train one epoch."""
+        if self.train_sampler is not None:
+            self.train_sampler.set_epoch(self.current_epoch)
+        
+        self.generator.train()
+        
+        # Keep WavLM frozen
+        gen_module = self.generator.module if hasattr(self.generator, 'module') else self.generator
+        if hasattr(gen_module, 'wavlm'):
+            gen_module.wavlm.eval()
+        
+        pbar = tqdm(
+            self.train_loader,
+            desc=f'Epoch {self.current_epoch + 1}/{self.config.training.num_epochs}',
+            disable=(self.rank != 0)
+        )
+        
+        for batch in pbar:
+            batch = batch.to(self.device, non_blocking=True)
+            
+            # ========================================
+            # Train Generator
+            # ========================================
+            
+            self.opt_g.zero_grad(set_to_none=True)
+            
+            with autocast(enabled=self.config.training.use_amp):
+                pred = self.generator(batch)
+            
+            # Compute generator loss
+            if self.config.loss.use_gan and self.global_step >= self.config.training.get('warmup_steps', 0):
+                # GAN mode
+                with autocast(enabled=False):
+                    # Discriminator outputs for fake
+                    mpd_fake_out, mpd_fake_feat = self.mpd(pred.float())
+                    msd_fake_out, msd_fake_feat = self.msd(pred.float())
+                    
+                    # Real features
+                    with torch.no_grad():
+                        mpd_real_out, mpd_real_feat = self.mpd(batch.float())
+                        msd_real_out, msd_real_feat = self.msd(batch.float())
+                    
+                    disc_outputs = mpd_fake_out + msd_fake_out
+                    disc_features = (
+                        mpd_real_feat + msd_real_feat,
+                        mpd_fake_feat + msd_fake_feat
+                    )
+                    
+                    loss_g, loss_dict = self.criterion(
+                        pred.float(),
+                        batch.float(),
+                        disc_outputs=disc_outputs,
+                        disc_features=disc_features
+                    )
+            else:
+                # No GAN mode
+                with autocast(enabled=False):
+                    loss_g, loss_dict = self.criterion(pred.float(), batch.float())
+            
+            # Skip if non-finite
+            if not torch.isfinite(loss_g):
+                logger.warning(f"Non-finite generator loss at step {self.global_step}")
+                self.global_step += 1
+                continue
+            
+            # Backward
+            self.scaler_g.scale(loss_g).backward()
+            
+            # Gradient clipping
+            self.scaler_g.unscale_(self.opt_g)
+            grad_norm_g = torch.nn.utils.clip_grad_norm_(
+                self.generator.parameters(),
+                max_norm=self.config.training.grad_clip,
+                error_if_nonfinite=False
+            )
+            
+            if not torch.isfinite(grad_norm_g):
+                logger.warning(f"Non-finite gradients at step {self.global_step}")
+                self.scaler_g.update()
+                self.global_step += 1
+                continue
+            
+            # Update
+            self.scaler_g.step(self.opt_g)
+            self.scaler_g.update()
+            
+            # ========================================
+            # Train Discriminator (if using GAN)
+            # ========================================
+            
+            if self.config.loss.use_gan and self.global_step >= self.config.training.get('warmup_steps', 0):
+                self.opt_d.zero_grad(set_to_none=True)
+                
+                with autocast(enabled=self.config.training.use_amp):
+                    # Real
+                    mpd_real_out, _ = self.mpd(batch)
+                    msd_real_out, _ = self.msd(batch)
+                    
+                    # Fake (detached)
+                    mpd_fake_out, _ = self.mpd(pred.detach())
+                    msd_fake_out, _ = self.msd(pred.detach())
+                
+                with autocast(enabled=False):
+                    loss_mpd = self.disc_loss(mpd_real_out, mpd_fake_out)
+                    loss_msd = self.disc_loss(msd_real_out, msd_fake_out)
+                    loss_d = loss_mpd + loss_msd
+                
+                if torch.isfinite(loss_d):
+                    self.scaler_d.scale(loss_d).backward()
+                    self.scaler_d.unscale_(self.opt_d)
+                    
+                    grad_norm_d = torch.nn.utils.clip_grad_norm_(
+                        list(self.mpd.parameters()) + list(self.msd.parameters()),
+                        max_norm=self.config.training.grad_clip,
+                        error_if_nonfinite=False
+                    )
+                    
+                    if torch.isfinite(grad_norm_d):
+                        self.scaler_d.step(self.opt_d)
+                    
+                    self.scaler_d.update()
+                    
+                    loss_dict['disc_loss'] = loss_d.item()
+            
+            # ========================================
+            # Logging
+            # ========================================
+            
+            if self.rank == 0:
+                pbar.set_postfix({'loss': f"{loss_g.item():.4f}"})
+                
+                # TensorBoard
+                if self.global_step % self.config.logging.log_interval == 0:
+                    for k, v in loss_dict.items():
+                        self.writer.add_scalar(f'train/{k}', v, self.global_step)
+                    self.writer.add_scalar('train/grad_norm_g', grad_norm_g, self.global_step)
+                
+                # Console
+                if self.global_step % 100 == 0:
+                    log_str = f"Step {self.global_step}: "
+                    log_str += " ".join([f"{k}={v:.4f}" for k, v in loss_dict.items()])
+                    logger.info(log_str)
+                
+                # Save checkpoint
+                if self.global_step > 0 and self.global_step % self.config.training.save_interval == 0:
+                    save_checkpoint(
+                        self.generator,
+                        self.opt_g,
+                        self.scaler_g,
+                        self.current_epoch,
+                        self.global_step,
+                        self.config,
+                        self.ckpt_dir,
+                        filename=f'checkpoint_step{self.global_step}.pt'
+                    )
+                    
+                    # Save audio sample
+                    save_audio(
+                        batch[0].cpu(),
+                        self.sample_dir / f'step{self.global_step:06d}_input.wav',
+                        self.config.data.sample_rate
+                    )
+                    save_audio(
+                        pred[0].detach().cpu(),
+                        self.sample_dir / f'step{self.global_step:06d}_output.wav',
+                        self.config.data.sample_rate
+                    )
+            
+            self.global_step += 1
+        
+        # Barrier
+        if self.world_size > 1:
+            dist.barrier()
+    
+    def train(self):
+        """Main training loop."""
+        logger.info("Starting training...")
+        logger.info(f"  Epochs: {self.config.training.num_epochs}")
+        logger.info(f"  Batch size per GPU: {self.config.training.batch_size}")
+        logger.info(f"  Total batch size: {self.config.training.batch_size * self.world_size}")
+        logger.info(f"  Steps per epoch: {len(self.train_loader)}")
+        
+        for epoch in range(self.current_epoch, self.config.training.num_epochs):
+            self.current_epoch = epoch
+            self.train_epoch()
+            
+            # Save epoch checkpoint
+            if self.rank == 0:
+                save_checkpoint(
+                    self.generator,
+                    self.opt_g,
+                    self.scaler_g,
+                    epoch + 1,
+                    self.global_step,
+                    self.config,
+                    self.ckpt_dir,
+                    filename=f'checkpoint_epoch{epoch + 1}.pt'
+                )
+        
+        logger.info("Training complete!")
+        
+        # Cleanup
+        if self.world_size > 1:
+            dist.destroy_process_group()
+        
+        if self.writer is not None:
+            self.writer.close()
+=== src/data/collate.py ===
+"""
+Collate Functions
+=================
+"""
+
+import torch
+
+
+def collate_fn(batch):
+    """
+    Simple collate function for audio batches.
+    
+    Args:
+        batch: List of (T,) audio tensors
+        
+    Returns:
+        (B, T) batched tensor
+    """
+    return torch.stack(batch, dim=0)
+=== src/data/dataset.py ===
+"""
+Audio Dataset
+=============
+
+Dataset for loading and preprocessing audio files.
+"""
+
+import os
+import random
+import torch
+import torchaudio
+from torch.utils.data import Dataset
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class AudioDataset(Dataset):
+    """
+    Audio dataset for training.
+    
+    Loads audio files, applies preprocessing, and extracts random segments.
+    """
+    
+    def __init__(self, config, split='train'):
+        """
+        Args:
+            config: Configuration object
+            split: 'train' or 'val'
+        """
+        self.config = config
+        self.split = split
+        
+        # Get directory
+        if split == 'train':
+            self.audio_dir = config.data.train_dir
+        else:
+            self.audio_dir = config.data.val_dir
+        
+        self.segment_length = config.data.segment_length
+        self.sample_rate = config.data.sample_rate
+        self.use_rms_norm = config.data.use_rms_norm
+        self.rms_threshold = config.data.rms_threshold
+        self.peak_target = config.data.peak_target
+        
+        # Collect audio files
+        self.audio_files = []
+        audio_extensions = ('.wav', '.flac', '.mp3', '.ogg', '.m4a')
+        
+        for root, _, files in os.walk(self.audio_dir):
+            for f in files:
+                if f.lower().endswith(audio_extensions):
+                    self.audio_files.append(os.path.join(root, f))
+        
+        if len(self.audio_files) == 0:
+            raise ValueError(f"No audio files found in {self.audio_dir}")
+        
+        logger.info(f"{split} dataset: {len(self.audio_files)} files")
+    
+    def __len__(self):
+        return len(self.audio_files)
+    
+    def __getitem__(self, idx):
+        """Load and preprocess audio."""
+        audio_path = self.audio_files[idx]
+        max_retries = 5
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                # Load audio
+                waveform, sr = torchaudio.load(audio_path)
+                
+                # Convert to mono
+                if waveform.shape[0] > 1:
+                    waveform = waveform.mean(dim=0, keepdim=True)
+                
+                # Resample if needed
+                if sr != self.sample_rate:
+                    resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
+                    waveform = resampler(waveform)
+                
+                # Extract segment
+                if self.split == 'train':
+                    # Random segment for training
+                    if waveform.shape[1] >= self.segment_length:
+                        start = random.randint(0, waveform.shape[1] - self.segment_length)
+                        waveform = waveform[:, start:start + self.segment_length]
+                    else:
+                        # Pad if too short
+                        pad_length = self.segment_length - waveform.shape[1]
+                        waveform = torch.nn.functional.pad(waveform, (0, pad_length))
+                else:
+                    # Fixed segment for validation
+                    if waveform.shape[1] >= self.segment_length:
+                        waveform = waveform[:, :self.segment_length]
+                    else:
+                        pad_length = self.segment_length - waveform.shape[1]
+                        waveform = torch.nn.functional.pad(waveform, (0, pad_length))
+                
+                # Check for silence
+                signal_energy = torch.mean(waveform ** 2)
+                if signal_energy < 1e-8:
+                    idx = random.randint(0, len(self) - 1)
+                    retry_count += 1
+                    continue
+                
+                # Normalize
+                if self.use_rms_norm:
+                    rms = torch.sqrt(torch.mean(waveform ** 2))
+                    rms = torch.clamp(rms, min=self.rms_threshold)
+                    waveform = waveform / (rms + 1e-8) * 0.1
+                else:
+                    peak = waveform.abs().max()
+                    if peak > 1e-6:
+                        waveform = waveform / (peak + 1e-8) * self.peak_target
+                
+                # Final check
+                final_rms = torch.sqrt(torch.mean(waveform ** 2))
+                if final_rms < self.rms_threshold:
+                    idx = random.randint(0, len(self) - 1)
+                    retry_count += 1
+                    continue
+                
+                waveform = torch.clamp(waveform, -1.0, 1.0).float()
+                
+                return waveform.squeeze(0)
+                
+            except Exception as e:
+                logger.error(f"Error loading {audio_path}: {e}")
+                idx = random.randint(0, len(self) - 1)
+                retry_count += 1
+                continue
+        
+        raise RuntimeError(f"Failed to load valid sample after {max_retries} retries")
+=== src/data/preprocessing.py ===
+=== src/data/__init__.py ===
+=== src/models/layer_fusion.py ===
+=== src/models/__init__.py ===
+=== src/models/generator.py ===
+"""
+HiFi-GAN Generator
+==================
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class ResBlock(nn.Module):
+    """Residual block with dilated convolutions."""
+    
+    def __init__(self, channels, kernel_size, dilation):
+        super().__init__()
+        padding = (kernel_size - 1) * dilation // 2
+        
+        self.conv1 = nn.Conv1d(channels, channels, kernel_size, dilation=dilation, padding=padding)
+        self.norm1 = nn.BatchNorm1d(channels)
+        
+        self.conv2 = nn.Conv1d(channels, channels, kernel_size, dilation=1, padding=(kernel_size-1)//2)
+        self.norm2 = nn.BatchNorm1d(channels)
+    
+    def forward(self, x):
+        residual = x
+        
+        x = self.conv1(x)
+        x = F.leaky_relu(x, 0.2)
+        x = self.norm1(x)
+        
+        x = self.conv2(x)
+        x = F.leaky_relu(x, 0.2)
+        x = self.norm2(x)
+        
+        return x + residual
+
+
+class HiFiGANGenerator(nn.Module):
+    """
+    HiFi-GAN style generator with progressive upsampling.
+    
+    Total upsampling: 8 × 5 × 4 × 2 = 320
+    """
+    
+    def __init__(
+        self,
+        hidden_dim=256,
+        upsample_rates=[8, 5, 4, 2],
+        upsample_kernel_sizes=[16, 10, 8, 4],
+        resblock_kernel_sizes=[3, 7, 11],
+        resblock_dilations=[[1, 3, 5], [1, 3, 5], [1, 3, 5]]
+    ):
+        super().__init__()
+        
+        # Input convolution
+        self.input_conv = nn.Conv1d(hidden_dim, 512, kernel_size=7, padding=3)
+        
+        # Upsampling blocks
+        self.ups = nn.ModuleList()
+        self.resblocks = nn.ModuleList()
+        
+        channels = 512
+        for rate, kernel in zip(upsample_rates, upsample_kernel_sizes):
+            out_channels = channels // 2
+            
+            # Transposed convolution for upsampling
+            self.ups.append(
+                nn.ConvTranspose1d(
+                    channels, out_channels,
+                    kernel_size=kernel,
+                    stride=rate,
+                    padding=(kernel - rate) // 2
+                )
+            )
+            
+            # Multi-receptive field ResBlocks
+            resblock_list = nn.ModuleList()
+            for k_size, dilations in zip(resblock_kernel_sizes, resblock_dilations):
+                for dil in dilations:
+                    resblock_list.append(ResBlock(out_channels, k_size, dil))
+            self.resblocks.append(resblock_list)
+            
+            channels = out_channels
+        
+        # Output convolution
+        self.output_conv = nn.Conv1d(channels, 1, kernel_size=7, padding=3)
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv1d, nn.ConvTranspose1d)):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (B, hidden_dim, T)
+            
+        Returns:
+            (B, 1, T×320)
+        """
+        x = self.input_conv(x)
+        x = F.leaky_relu(x, 0.2)
+        
+        for up, resblocks in zip(self.ups, self.resblocks):
+            x = up(x)
+            x = F.leaky_relu(x, 0.2)
+            
+            # Apply all resblocks and average
+            xs = None
+            for resblock in resblocks:
+                if xs is None:
+                    xs = resblock(x)
+                else:
+                    xs = xs + resblock(x)
+            x = xs / len(resblocks)
+        
+        x = self.output_conv(x)
+        
+        # Adaptive normalization
+        peak = x.abs().max(dim=-1, keepdim=True)[0]
+        x = x / (peak + 1e-8) * 0.95
+        
+        return x
+=== src/models/discriminator.py ===
+"""
+Discriminators for GAN Training
+================================
+
+Multi-Period Discriminator (MPD) and Multi-Scale Discriminator (MSD).
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class PeriodDiscriminator(nn.Module):
+    """
+    Single period discriminator.
+    
+    Processes 1D signal as 2D with specific period.
+    """
+    
+    def __init__(self, period):
+        super().__init__()
+        
+        self.period = period
+        
+        self.convs = nn.ModuleList([
+            nn.Conv2d(1, 32, (5, 1), (3, 1), padding=(2, 0)),
+            nn.Conv2d(32, 128, (5, 1), (3, 1), padding=(2, 0)),
+            nn.Conv2d(128, 512, (5, 1), (3, 1), padding=(2, 0)),
+            nn.Conv2d(512, 1024, (5, 1), (3, 1), padding=(2, 0)),
+            nn.Conv2d(1024, 1024, (5, 1), 1, padding=(2, 0)),
+        ])
+        
+        self.conv_post = nn.Conv2d(1024, 1, (3, 1), 1, padding=(1, 0))
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (B, T) waveform
+            
+        Returns:
+            output: (B, 1, ...)
+            features: List of intermediate features
+        """
+        features = []
+        
+        # Reshape to 2D
+        B, T = x.shape
+        if T % self.period != 0:
+            padding = self.period - (T % self.period)
+            x = F.pad(x, (0, padding), mode='reflect')
+            T = T + padding
+        
+        x = x.view(B, 1, T // self.period, self.period)
+        
+        # Apply convolutions
+        for conv in self.convs:
+            x = conv(x)
+            x = F.leaky_relu(x, 0.2)
+            features.append(x)
+        
+        x = self.conv_post(x)
+        features.append(x)
+        
+        x = torch.flatten(x, 1, -1)
+        
+        return x, features
+
+
+class MultiPeriodDiscriminator(nn.Module):
+    """Multi-Period Discriminator with multiple periods."""
+    
+    def __init__(self, periods=[2, 3, 5, 7, 11]):
+        super().__init__()
+        
+        self.discriminators = nn.ModuleList([
+            PeriodDiscriminator(period) for period in periods
+        ])
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (B, T) waveform
+            
+        Returns:
+            outputs: List of discriminator outputs
+            features: List of feature lists
+        """
+        outputs = []
+        features = []
+        
+        for disc in self.discriminators:
+            output, feat = disc(x)
+            outputs.append(output)
+            features.append(feat)
+        
+        return outputs, features
+
+
+class ScaleDiscriminator(nn.Module):
+    """Single scale discriminator."""
+    
+    def __init__(self):
+        super().__init__()
+        
+        self.convs = nn.ModuleList([
+            nn.Conv1d(1, 16, 15, 1, padding=7),
+            nn.Conv1d(16, 64, 41, 4, groups=4, padding=20),
+            nn.Conv1d(64, 256, 41, 4, groups=16, padding=20),
+            nn.Conv1d(256, 1024, 41, 4, groups=64, padding=20),
+            nn.Conv1d(1024, 1024, 41, 4, groups=256, padding=20),
+            nn.Conv1d(1024, 1024, 5, 1, padding=2),
+        ])
+        
+        self.conv_post = nn.Conv1d(1024, 1, 3, 1, padding=1)
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (B, T) waveform
+            
+        Returns:
+            output: (B, 1, T')
+            features: List of intermediate features
+        """
+        features = []
+        
+        x = x.unsqueeze(1)  # (B, 1, T)
+        
+        for conv in self.convs:
+            x = conv(x)
+            x = F.leaky_relu(x, 0.2)
+            features.append(x)
+        
+        x = self.conv_post(x)
+        features.append(x)
+        
+        x = torch.flatten(x, 1, -1)
+        
+        return x, features
+
+
+class MultiScaleDiscriminator(nn.Module):
+    """Multi-Scale Discriminator with average pooling."""
+    
+    def __init__(self, num_scales=3):
+        super().__init__()
+        
+        self.discriminators = nn.ModuleList([
+            ScaleDiscriminator() for _ in range(num_scales)
+        ])
+        
+        self.pooling = nn.ModuleList([
+            nn.AvgPool1d(4, 2, padding=2) for _ in range(num_scales - 1)
+        ])
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (B, T) waveform
+            
+        Returns:
+            outputs: List of discriminator outputs
+            features: List of feature lists
+        """
+        outputs = []
+        features = []
+        
+        for i, disc in enumerate(self.discriminators):
+            if i > 0:
+                x = self.pooling[i - 1](x)
+            
+            output, feat = disc(x)
+            outputs.append(output)
+            features.append(feat)
+        
+        return outputs, features
+=== src/models/adapter.py ===
+"""
+WavLM Adapter and Layer Fusion
+===============================
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class LayerFusion(nn.Module):
+    """
+    Fuse multiple WavLM layers into a single representation.
+    
+    Supports:
+        - "average": Simple averaging
+        - "learned": Learned weighted combination
+    """
+    
+    def __init__(self, num_layers=12, fusion_type="learned"):
+        super().__init__()
+        
+        self.num_layers = num_layers
+        self.fusion_type = fusion_type
+        
+        if fusion_type == "learned":
+            # Learnable weights (constrained to sum to 1)
+            self.weights = nn.Parameter(torch.ones(num_layers) / num_layers)
+        
+    def forward(self, hidden_states):
+        """
+        Args:
+            hidden_states: Tuple of (B, T, 768) tensors from WavLM
+            
+        Returns:
+            (B, T, 768) fused representation
+        """
+        # Take last N layers
+        layers = hidden_states[-self.num_layers:]
+        
+        if self.fusion_type == "average":
+            # Simple averaging
+            stacked = torch.stack(layers, dim=0)  # (N, B, T, 768)
+            fused = stacked.mean(dim=0)  # (B, T, 768)
+        
+        elif self.fusion_type == "learned":
+            # Learned weighted combination
+            weights = F.softmax(self.weights, dim=0)  # Normalize to sum=1
+            
+            fused = 0
+            for i, layer in enumerate(layers):
+                fused = fused + weights[i] * layer
+        
+        else:
+            raise ValueError(f"Unknown fusion_type: {self.fusion_type}")
+        
+        return fused
+
+
+class WavLMAdapter(nn.Module):
+    """
+    Adapter to project WavLM features to generator input space.
+    
+    Architecture:
+        (B, T, 768) → Linear → Conv blocks → (B, hidden_dim, T)
+    """
+    
+    def __init__(self, wavlm_dim=768, hidden_dim=256, num_layers=3, kernel_size=7, dropout=0.1):
+        super().__init__()
+        
+        # Linear projection
+        self.input_proj = nn.Linear(wavlm_dim, hidden_dim)
+        
+        # Convolutional blocks with residual connections
+        self.conv_blocks = nn.ModuleList()
+        for _ in range(num_layers):
+            block = nn.ModuleDict({
+                'conv': nn.Conv1d(hidden_dim, hidden_dim, kernel_size, padding=kernel_size//2),
+                'norm': nn.BatchNorm1d(hidden_dim),
+                'dropout': nn.Dropout(dropout),
+            })
+            self.conv_blocks.append(block)
+        
+        self._init_weights()
+    
+    def _init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Conv1d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm1d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+    
+    def forward(self, x):
+        """
+        Args:
+            x: (B, T, 768)
+            
+        Returns:
+            (B, hidden_dim, T)
+        """
+        # Linear projection
+        x = self.input_proj(x)  # (B, T, hidden_dim)
+        x = x.transpose(1, 2)  # (B, hidden_dim, T)
+        
+        # Conv blocks with residuals
+        for block in self.conv_blocks:
+            residual = x
+            x = block['conv'](x)
+            x = F.gelu(x)
+            x = block['norm'](x)
+            x = block['dropout'](x)
+            x = x + residual
+        
+        return x
+=== src/models/wavlm_vocoder.py ===
+"""
+WavLM Vocoder Main Model
+========================
+
+Complete model combining WavLM encoder (frozen), adapter, and generator.
+"""
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from transformers import Wav2Vec2FeatureExtractor, WavLMModel
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class WavLM2Audio(nn.Module):
+    """
+    Complete WavLM to Audio vocoder.
+    
+    Architecture:
+        Audio → WavLM (frozen) → Layer Fusion → Adapter → Generator → Audio
+    
+    Args:
+        config: Configuration dict or OmegaConf object
+    """
+    
+    def __init__(self, config):
+        super().__init__()
+        
+        self.config = config
+        
+        # Load WavLM
+        logger.info(f"Loading WavLM: {config.model.wavlm_model_name}")
+        self.feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
+            config.model.wavlm_model_name
+        )
+        self.wavlm = WavLMModel.from_pretrained(
+            config.model.wavlm_model_name
+        )
+        
+        self.wavlm_dim = self.wavlm.config.hidden_size
+        
+        # Freeze WavLM
+        if config.model.freeze_wavlm:
+            for param in self.wavlm.parameters():
+                param.requires_grad = False
+            self.wavlm.eval()
+            logger.info("WavLM frozen")
+        
+        # Layer fusion
+        from .adapter import LayerFusion
+        self.layer_fusion = LayerFusion(
+            num_layers=config.model.num_layers,
+            fusion_type=config.model.fusion_type
+        )
+        
+        # Adapter
+        from .adapter import WavLMAdapter
+        self.adapter = WavLMAdapter(
+            wavlm_dim=self.wavlm_dim,
+            hidden_dim=config.model.hidden_dim,
+            num_layers=config.model.num_adapter_layers,
+            kernel_size=config.model.kernel_size,
+            dropout=config.model.dropout
+        )
+        
+        # Generator
+        from .generator import HiFiGANGenerator
+        self.generator = HiFiGANGenerator(
+            hidden_dim=config.model.hidden_dim
+        )
+        
+        # Count parameters
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        logger.info(f"Total params: {total_params:,}")
+        logger.info(f"Trainable params: {trainable_params:,}")
+    
+    def forward(self, audio):
+        """
+        Args:
+            audio: (B, T) waveform
+            
+        Returns:
+            (B, T) reconstructed waveform
+        """
+        B, T = audio.shape
+        
+        # Extract WavLM features
+        if self.config.model.freeze_wavlm:
+            with torch.no_grad():
+                outputs = self.wavlm(audio, output_hidden_states=True)
+        else:
+            outputs = self.wavlm(audio, output_hidden_states=True)
+        
+        # Get all hidden states
+        hidden_states = outputs.hidden_states  # Tuple of (B, T', 768)
+        
+        # Fuse layers
+        fused = self.layer_fusion(hidden_states)  # (B, T', 768)
+        
+        # Adapt
+        adapted = self.adapter(fused)  # (B, hidden_dim, T')
+        
+        # Generate
+        reconstructed = self.generator(adapted)  # (B, 1, T'×320)
+        reconstructed = reconstructed.squeeze(1)  # (B, T'×320)
+        
+        # Match original length
+        if reconstructed.shape[1] != T:
+            reconstructed = F.interpolate(
+                reconstructed.unsqueeze(1),
+                size=T,
+                mode='linear',
+                align_corners=False
+            ).squeeze(1)
+        
+        return reconstructed
+    
+    def get_num_params(self):
+        """Get number of trainable parameters."""
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+=== src/__init__.py ===
