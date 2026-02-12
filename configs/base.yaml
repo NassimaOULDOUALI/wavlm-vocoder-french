@@ -2,7 +2,7 @@
 # No GAN training (spectral losses only)
 
 model:
-  wavlm_model_name: "microsoft/wavlm-base-plus"
+  wavlm_model_name: "/lustre/fsn1/projects/rech/lsq/umv83if/hf_models/microsoft_wavlm_base_plus"
   hidden_dim: 256
   num_adapter_layers: 3
   kernel_size: 7
@@ -15,8 +15,8 @@ model:
 
 loss:
   # Reconstruction losses
-  l1_weight: 2.0
-  stft_weight: 1.0
+  l1_weight: 1.0
+  stft_weight: 45.0
   
   # GAN losses (disabled for base config)
   use_gan: false
@@ -24,25 +24,27 @@ loss:
   fm_weight: 2.0
 
 data:
-  train_dir: "/path/to/your/train/data"
-  val_dir: "/path/to/your/val/data"
+  train_dir: "/lustre/fsn1/projects/rech/lsq/umv83if/filtered"
+  val_dir: "/lustre/fsn1/projects/rech/lsq/umv83if/filtered/common_voice_fr/validation"
   segment_length: 32000  # 2 seconds at 16kHz
   sample_rate: 16000
   use_rms_norm: false
   rms_threshold: 0.005
-  peak_target: 0.99
+  peak_target: 0.95
 
 training:
   # Optimizer
-  lr: 1e-4
-  betas: [0.9, 0.999]
-  weight_decay: 0.01
+  lr: 0.0002
+  betas: [0.8, 0.99]
+  weight_decay: 0.00
   
   # Training
   batch_size: 16  # per GPU
-  num_epochs: 100
-  grad_clip: 1.0
+  num_epochs: 50
+  grad_clip: 5.0
   use_amp: true
+  
+  warmup_steps: 10000
   
   # Checkpointing
   output_dir: "./outputs"

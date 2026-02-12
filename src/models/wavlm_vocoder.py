@@ -3,6 +3,7 @@ WavLM Vocoder Main Model
 ========================
 
 Complete model combining WavLM encoder (frozen), adapter, and generator.
+CONFORME AU PAPIER JEP 2026.
 """
 
 import torch
@@ -41,7 +42,7 @@ class WavLM2Audio(nn.Module):
         
         self.wavlm_dim = self.wavlm.config.hidden_size
         
-        # Freeze WavLM
+        # Freeze WavLM (PAPIER: TOUJOURS gelé)
         if config.model.freeze_wavlm:
             for param in self.wavlm.parameters():
                 param.requires_grad = False
@@ -87,11 +88,10 @@ class WavLM2Audio(nn.Module):
         """
         B, T = audio.shape
         
-        # Extract WavLM features
-        if self.config.model.freeze_wavlm:
-            with torch.no_grad():
-                outputs = self.wavlm(audio, output_hidden_states=True)
-        else:
+        # Extract WavLM features (CORRECTION: meilleure gestion gradients)
+        with torch.set_grad_enabled(not self.config.model.freeze_wavlm):
+            if self.config.model.freeze_wavlm:
+                self.wavlm.eval()  # Force eval mode
             outputs = self.wavlm(audio, output_hidden_states=True)
         
         # Get all hidden states
@@ -121,3 +121,15 @@ class WavLM2Audio(nn.Module):
     def get_num_params(self):
         """Get number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
+    
+    def train(self, mode=True):
+        """
+        Override train() pour toujours garder WavLM en eval.
+        
+        Ceci garantit que WavLM reste gelé même si .train() est appelé
+        sur le module parent (par exemple via DDP).
+        """
+        super().train(mode)
+        if self.config.model.freeze_wavlm:
+            self.wavlm.eval()
+        return self

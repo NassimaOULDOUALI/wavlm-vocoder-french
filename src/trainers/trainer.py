@@ -3,6 +3,7 @@ Trainer for WavLM Vocoder
 =========================
 
 Handles distributed training with DDP, AMP, and checkpointing.
+CONFORME AU PAPIER JEP 2026.
 """
 
 import os
@@ -16,6 +17,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.cuda.amp import autocast, GradScaler
+from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -38,6 +40,7 @@ class Trainer:
     Supports:
         - DDP multi-GPU training
         - AMP (Automatic Mixed Precision)
+        - ExponentialLR scheduler (PAPIER JEP 2026)
         - GAN training (optional)
         - Checkpointing and resuming
         - TensorBoard logging
@@ -162,13 +165,27 @@ class Trainer:
         logger.info(f"Train dataset: {len(train_dataset)} samples")
     
     def _setup_optimizers(self):
-        """Setup optimizers and schedulers."""
+        """
+        Setup optimizers and schedulers.
+        
+        PAPIER JEP 2026 (Section 5):
+        - AdamW optimizer
+        - β1 = 0.8, β2 = 0.99
+        - LR = 2×10⁻⁴ (générateur et discriminateurs)
+        - ExponentialLR scheduler: γ = 0.999
+        """
         # Generator optimizer
         self.opt_g = torch.optim.AdamW(
             self.generator.parameters(),
             lr=self.config.training.lr,
             betas=self.config.training.betas,
             weight_decay=self.config.training.weight_decay
+        )
+        
+        # ExponentialLR scheduler (PAPIER Section 5)
+        self.scheduler_g = ExponentialLR(
+            self.opt_g, 
+            gamma=self.config.training.get('lr_decay', 0.999)
         )
         
         # Discriminator optimizer (if using GAN)
@@ -180,6 +197,12 @@ class Trainer:
                 betas=self.config.training.betas,
                 weight_decay=self.config.training.weight_decay
             )
+            
+            # ExponentialLR scheduler pour discriminateurs
+            self.scheduler_d = ExponentialLR(
+                self.opt_d,
+                gamma=self.config.training.get('lr_decay', 0.999)
+            )
         
         # AMP scaler
         self.scaler_g = GradScaler(enabled=self.config.training.use_amp)
@@ -190,6 +213,9 @@ class Trainer:
         if torch.cuda.is_available():
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
+        
+        logger.info(f"✓ Optimizers: LR={self.config.training.lr}, betas={self.config.training.betas}")
+        logger.info(f"✓ Scheduler: ExponentialLR (γ={self.config.training.get('lr_decay', 0.999)})")
     
     def _setup_loss(self):
         """Setup loss functions."""
@@ -267,8 +293,14 @@ class Trainer:
             with autocast(enabled=self.config.training.use_amp):
                 pred = self.generator(batch)
             
+            # Warmup GAN: 10k batchs sans discriminateurs (PAPIER Section 5)
+            use_gan_loss = (
+                self.config.loss.use_gan and 
+                self.global_step >= self.config.training.get('warmup_steps', 10000)
+            )
+            
             # Compute generator loss
-            if self.config.loss.use_gan and self.global_step >= self.config.training.get('warmup_steps', 0):
+            if use_gan_loss:
                 # GAN mode
                 with autocast(enabled=False):
                     # Discriminator outputs for fake
@@ -324,11 +356,14 @@ class Trainer:
             self.scaler_g.step(self.opt_g)
             self.scaler_g.update()
             
+            # Step scheduler (PAPIER Section 5)
+            self.scheduler_g.step()
+            
             # ========================================
             # Train Discriminator (if using GAN)
             # ========================================
             
-            if self.config.loss.use_gan and self.global_step >= self.config.training.get('warmup_steps', 0):
+            if use_gan_loss:
                 self.opt_d.zero_grad(set_to_none=True)
                 
                 with autocast(enabled=self.config.training.use_amp):
@@ -360,6 +395,9 @@ class Trainer:
                     
                     self.scaler_d.update()
                     
+                    # Step scheduler discriminateurs
+                    self.scheduler_d.step()
+                    
                     loss_dict['disc_loss'] = loss_d.item()
             
             # ========================================
@@ -374,11 +412,17 @@ class Trainer:
                     for k, v in loss_dict.items():
                         self.writer.add_scalar(f'train/{k}', v, self.global_step)
                     self.writer.add_scalar('train/grad_norm_g', grad_norm_g, self.global_step)
+                    
+                    # Log learning rates
+                    self.writer.add_scalar('train/lr_g', self.scheduler_g.get_last_lr()[0], self.global_step)
+                    if use_gan_loss:
+                        self.writer.add_scalar('train/lr_d', self.scheduler_d.get_last_lr()[0], self.global_step)
                 
                 # Console
                 if self.global_step % 100 == 0:
                     log_str = f"Step {self.global_step}: "
                     log_str += " ".join([f"{k}={v:.4f}" for k, v in loss_dict.items()])
+                    log_str += f" lr_g={self.scheduler_g.get_last_lr()[0]:.2e}"
                     logger.info(log_str)
                 
                 # Save checkpoint
@@ -419,6 +463,7 @@ class Trainer:
         logger.info(f"  Batch size per GPU: {self.config.training.batch_size}")
         logger.info(f"  Total batch size: {self.config.training.batch_size * self.world_size}")
         logger.info(f"  Steps per epoch: {len(self.train_loader)}")
+        logger.info(f"  Warmup steps (no GAN): {self.config.training.get('warmup_steps', 10000)}")
         
         for epoch in range(self.current_epoch, self.config.training.num_epochs):
             self.current_epoch = epoch

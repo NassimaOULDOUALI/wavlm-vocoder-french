@@ -5,8 +5,8 @@
 #SBATCH --constraint=h100
 #SBATCH --qos=qos_gpu_h100-t3
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --gres=gpu:4
+#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --hint=nomultithread
 #SBATCH --time=20:00:00
