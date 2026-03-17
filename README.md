@@ -1,8 +1,9 @@
 # WavLM Vocoder for French 🎙️🇫🇷
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
+![CI Tests](https://github.com/NassimaOULDOUALI/wavlm-vocoder-french/actions/workflows/ci.yml/badge.svg)
+![Quick Checks](https://github.com/NassimaOULDOUALI/wavlm-vocoder-french/actions/workflows/quick-checks.yml/badge.svg)
+![Python Versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 > **Vocodage WavLM vers audio en français : Ablation des couches et supervision adversariale**  
 > Neural vocoder for reconstructing high-quality French speech from WavLM representations
@@ -291,5 +292,6 @@ For questions, please open an issue or contact: **nassima.ould-ouali@ip-paris.fr
 - [ ] Real-time inference optimization
 
 ---
+
 
 **Star ⭐ this repo if you find it useful!**
