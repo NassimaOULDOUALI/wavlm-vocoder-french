@@ -1,7 +1,7 @@
 """Tests for loss functions (CPU-only, no GPU required)."""
 import pytest
 import torch
-from losses import MultiScaleSTFTLoss, CombinedGANLoss
+from losses import MultiScaleSTFTLoss, CombinedLoss
 
 
 @pytest.fixture
@@ -27,18 +27,18 @@ def test_stft_loss_zero_on_identity(batch):
 
 def test_combined_loss_dict(batch):
     y_true, y_pred = batch
-    total, d = CombinedGANLoss(stft_weight=1.0, l1_weight=0.5)(y_pred, y_true)
+    total, d = CombinedLoss(stft_loss_weight=1.0, l1_loss_weight=0.5)(y_pred, y_true)
     assert torch.isfinite(total)
     assert {"loss", "l1", "stft"} == set(d.keys())
 
 
 def test_combined_loss_zero_l1_weight(batch):
     y_true, y_pred = batch
-    _, d = CombinedGANLoss(stft_weight=1.0, l1_weight=0.0)(y_pred, y_true)
+    _, d = CombinedLoss(stft_loss_weight=1.0, l1_loss_weight=0.0)(y_pred, y_true)
     assert abs(d["l1"]) < 1e-9
 
 
 def test_combined_loss_zero_stft_weight(batch):
     y_true, y_pred = batch
-    _, d = CombinedGANLoss(stft_weight=0.0, l1_weight=1.0)(y_pred, y_true)
+    _, d = CombinedLoss(stft_loss_weight=0.0, l1_loss_weight=1.0)(y_pred, y_true)
     assert abs(d["stft"]) < 1e-9
