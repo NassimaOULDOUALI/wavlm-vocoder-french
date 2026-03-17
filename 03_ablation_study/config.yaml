@@ -1,7 +1,7 @@
 # config_gan.yaml — ablation study
 
 model:
-  wavlm_model_name: /lustre/fsn1/projects/rech/lsq/umv83if/repos/KVC/MIMIC-VC/hf_models/microsoft_wavlm_base_plus
+  wavlm_model_name: microsoft/wavlm-base-plus
   hidden_dim: 256
   num_adapter_layers: 6
   kernel_size: 7
@@ -24,7 +24,7 @@ loss:
   fm_weight: 2.0
 
 data:
-  train_dir: "/lustre/fsn1/projects/rech/lsq/umv83if/filtered"
+  train_dir: "/path/to/corpus"
   segment_length: 32000
   sample_rate: 16000
   use_rms_norm: false

@@ -86,7 +86,7 @@ except Exception:
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "model": {
-        "wavlm_model_name": "/lustre/fsn1/projects/rech/lsq/umv83if/repos/KVC/MIMIC-VC/hf_models/microsoft_wavlm_base_plus",
+        "wavlm_model_name": "microsoft/wavlm-base-plus",
         "hidden_dim": 256,
         "num_adapter_layers": 6,
         "kernel_size": 7,

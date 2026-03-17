@@ -2,7 +2,7 @@
 # No GAN training (spectral losses only)
 
 model:
-  wavlm_model_name: "/lustre/fsn1/projects/rech/lsq/umv83if/hf_models/microsoft_wavlm_base_plus"
+  wavlm_model_name: "microsoft/wavlm-base-plus"
   hidden_dim: 256
   num_adapter_layers: 3
   kernel_size: 7
@@ -24,8 +24,8 @@ loss:
   fm_weight: 2.0
 
 data:
-  train_dir: "/lustre/fsn1/projects/rech/lsq/umv83if/filtered"
-  val_dir: "/lustre/fsn1/projects/rech/lsq/umv83if/filtered/common_voice_fr/validation"
+  train_dir: "/path/to/corpus"
+  val_dir: "/path/to/corpus/common_voice_fr/validation"
   segment_length: 32000  # 2 seconds at 16kHz
   sample_rate: 16000
   use_rms_norm: false
