@@ -6,8 +6,14 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    - cron: '0 0 * * 0'  # Hebdomadaire : dimanche à minuit
-  workflow_dispatch:  # Déclenchement manuel
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+# AJOUT IMPORTANT: Donner les permissions nécessaires
+permissions:
+  contents: read
+  security-events: write  # Permet d'uploader les résultats SARIF
+  actions: read
 
 jobs:
   security:
@@ -33,20 +39,20 @@ jobs:
       - name: 📦 Install bandit
         run: |
           pip install bandit==1.7.10
-          pip install bandit-sarif-formatter  # Pour le format SARIF (recommandé)
+          pip install bandit-sarif-formatter
       
       - name: 🔍 Run Bandit security scan
         id: bandit
         continue-on-error: true
         run: |
-          # Version avec sortie texte (simple)
+          # Scan et rapport texte
           bandit -r src/ -f txt -o bandit_report.txt || true
           
-          # Version avec sortie SARIF (pour GitHub Security tab)
+          # Scan et rapport SARIF (pour GitHub Security)
           bandit -r src/ -f sarif -o bandit_results.sarif || true
           
-          # Afficher un résumé
-          echo "## Bandit Security Scan Results" > bandit_summary.md
+          # Compter les issues
+          echo "## 📊 Security Scan Results" > bandit_summary.md
           echo "" >> bandit_summary.md
           echo "\`\`\`" >> bandit_summary.md
           bandit -r src/ -f txt || echo "No issues found" >> bandit_summary.md
@@ -58,6 +64,7 @@ jobs:
           sarif_file: bandit_results.sarif
           category: bandit
         if: always() && hashFiles('bandit_results.sarif') != ''
+        continue-on-error: true  # Évite de faire échouer le workflow si problème de permission
       
       - name: 📤 Upload bandit report
         uses: actions/upload-artifact@v4
@@ -75,26 +82,25 @@ jobs:
         run: |
           echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           
-          if [ -f bandit_summary.md ]; then
-            cat bandit_summary.md >> $GITHUB_STEP_SUMMARY
-          else
-            echo "✅ No security issues found!" >> $GITHUB_STEP_SUMMARY
-          fi
-          
-          # Compter les issues par sévérité
+          # Compter les issues
           if [ -f bandit_results.sarif ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### Issue Breakdown" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            
             HIGH=$(grep -c '"level": "error"' bandit_results.sarif || echo 0)
             MEDIUM=$(grep -c '"level": "warning"' bandit_results.sarif || echo 0)
             LOW=$(grep -c '"level": "note"' bandit_results.sarif || echo 0)
             
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
             echo "| 🔴 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
             echo "| 🟡 Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
             echo "| 🔵 Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No security issues found!" >> $GITHUB_STEP_SUMMARY
           fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Detailed Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the artifacts to see the full bandit report." >> $GITHUB_STEP_SUMMARY
