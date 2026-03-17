@@ -161,7 +161,7 @@ tensorboard==2.20.0
 tensorboard-data-server==0.7.2
 terminado==0.18.1
 threadpoolctl==3.6.0
-tinycss2==1.4.0
+tinycss2==1.5.1
 tokenizers==0.22.2
 torch==2.10.0
 torchaudio==2.10.0
