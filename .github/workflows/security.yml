@@ -1,16 +1,100 @@
-# .github/workflows/security.yml
 name: Security Scan
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0'  # Hebdomadaire : dimanche à minuit
+  workflow_dispatch:  # Déclenchement manuel
+
 jobs:
   security:
+    name: 🔒 Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
     steps:
-      - uses: actions/checkout@v4
-      - name: Bandit Scan
-        run: |
-          pip install bandit
-          bandit -r src/ -f html -o bandit.html
-      - uses: actions/upload-artifact@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
         with:
-          name: bandit-report
-          path: bandit.html
+          fetch-depth: 1
+      
+      - name: 🔧 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: ⬆️ Upgrade pip
+        run: python -m pip install --upgrade pip
+      
+      - name: 📦 Install bandit
+        run: |
+          pip install bandit==1.7.10
+          pip install bandit-sarif-formatter  # Pour le format SARIF (recommandé)
+      
+      - name: 🔍 Run Bandit security scan
+        id: bandit
+        continue-on-error: true
+        run: |
+          # Version avec sortie texte (simple)
+          bandit -r src/ -f txt -o bandit_report.txt || true
+          
+          # Version avec sortie SARIF (pour GitHub Security tab)
+          bandit -r src/ -f sarif -o bandit_results.sarif || true
+          
+          # Afficher un résumé
+          echo "## Bandit Security Scan Results" > bandit_summary.md
+          echo "" >> bandit_summary.md
+          echo "\`\`\`" >> bandit_summary.md
+          bandit -r src/ -f txt || echo "No issues found" >> bandit_summary.md
+          echo "\`\`\`" >> bandit_summary.md
+      
+      - name: 📊 Upload SARIF to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: bandit_results.sarif
+          category: bandit
+        if: always() && hashFiles('bandit_results.sarif') != ''
+      
+      - name: 📤 Upload bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-reports
+          path: |
+            bandit_report.txt
+            bandit_results.sarif
+            bandit_summary.md
+          retention-days: 30
+        if: always()
+      
+      - name: 📋 Generate summary
+        if: always()
+        run: |
+          echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f bandit_summary.md ]; then
+            cat bandit_summary.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ No security issues found!" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Compter les issues par sévérité
+          if [ -f bandit_results.sarif ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Issue Breakdown" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            
+            HIGH=$(grep -c '"level": "error"' bandit_results.sarif || echo 0)
+            MEDIUM=$(grep -c '"level": "warning"' bandit_results.sarif || echo 0)
+            LOW=$(grep -c '"level": "note"' bandit_results.sarif || echo 0)
+            
+            echo "| 🔴 High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| 🟡 Medium | $MEDIUM |" >> $GITHUB_STEP_SUMMARY
+            echo "| 🔵 Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+          fi
