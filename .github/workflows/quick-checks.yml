@@ -1,23 +1,78 @@
+---
 name: Quick Checks
 
-on:
-  pull_request:
-    branches: [ main ]
+on:  # pas d'espaces inutiles
   push:
-    branches: [ develop ]
+    branches-ignore:
+      - 'releases/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'bugfix/**'
+  workflow_dispatch:
 
 jobs:
   quick:
+    name: 🔍 Lint & Format
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    - name: Install tools
-      run: pip install black flake8
-    - name: Black check
-      run: black --check src/ tests/ || true
-    - name: Flake8
-      run: flake8 src/ --max-line-length=120 || true
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+        
+      - name: 🔧 Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+        
+      - name: ⬆️ Upgrade pip
+        run: python -m pip install --upgrade pip
+        
+      - name: 📦 Install tools
+        run: |
+          pip install black==24.10.0
+          pip install flake8==7.1.1
+          pip install isort==5.13.2
+          
+      - name: 🎨 Check Black formatting
+        run: |
+          black --check src/ tests/ || {
+            echo "❌ Black format check failed"
+            echo "Run 'black src/ tests/' locally to fix"
+            exit 1
+          }
+        continue-on-error: true
+        
+      - name: 📏 Check import sorting (isort)
+        run: |
+          isort --check-only --diff src/ tests/ || {
+            echo "❌ isort check failed"
+            echo "Run 'isort src/ tests/' locally to fix"
+          }
+        continue-on-error: true
+        
+      - name: 🔍 Lint with flake8
+        run: |
+          flake8 src/ tests/ \
+            --max-line-length=120 \
+            --ignore=E203,W503 \
+            --exclude=__pycache__,build,dist \
+            --statistics
+        continue-on-error: true
+        
+      - name: 📊 Generate report
+        if: always()
+        run: |
+          echo "## 📋 Quick Checks Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Black | ${{ job.steps.0.outcome == 'success' && '✅' || '⚠️' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| isort | ${{ job.steps.1.outcome == 'success' && '✅' || '⚠️' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| flake8 | ${{ job.steps.2.outcome == 'success' && '✅' || '⚠️' }} |" >> $GITHUB_STEP_SUMMARY
