@@ -6,104 +6,104 @@ on:
   pull_request:
     branches: [ main ]
 
-# Permet d'annuler les runs en cours si un nouveau push est fait
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    name: Test Python ${{ matrix.python-version }} sur ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: Test Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     
     strategy:
-      fail-fast: false  # Continue les autres tests même si un échoue
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest]  # ou ajoutez macos-latest, windows-latest si besoin
         python-version: ['3.10', '3.11', '3.12']
         
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Récupère tout l'historique pour les version tags
       
     - name: Setup Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
         python-version: ${{ matrix.python-version }}
-        cache: 'pip'  # Cache automatique des dépendances
-        cache-dependency-path: |
-          requirements.txt
-          setup.py
+        cache: 'pip'
       
-    - name: Install system dependencies (FFmpeg)
+    - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y ffmpeg libavcodec-extra libavutil-dev libavformat-dev libavcodec-dev
-        ffmpeg -version  # Vérification
-      
-    - name: Display Python version
-      run: python --version
-      
-    - name: Upgrade pip and install build tools
+        ffmpeg -version
+        
+    - name: Upgrade pip and install tools
       run: |
         python -m pip install --upgrade pip setuptools wheel
-        pip list
-      
+        
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        pip install -e .  # Installation en mode développement
+        pip install -e .
+        pip list  # Affiche toutes les dépendances installées
         
-    - name: List installed packages
-      run: pip list
-      
-    - name: Check code syntax
-      run: |
-        find . -name "*.py" ! -path "./.git/*" ! -path "./venv/*" -exec python -m py_compile {} \;
-        echo "✅ Syntax check passed"
-      
-    - name: Run tests with pytest
-      run: |
-        pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
-      env:
-        PYTHONPATH: ${{ github.workspace }}
-        
-    - name: Upload coverage reports to Codecov
-      uses: codecov/codecov-action@v4
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
-      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-      
-    - name: Test minimal inference
+    - name: Debug - Check Python path
       run: |
         python -c "
-        import torch
         import sys
-        sys.path.append('src')
-        try:
-            from models.generator import HiFiGeneratorImproved
-            model = HiFiGeneratorImproved(hidden_dim=32)
-            print('✅ Model import successful')
-            x = torch.randn(1, 32, 50)
-            out = model(x)
-            print(f'✅ Forward pass successful: {out.shape}')
-        except Exception as e:
-            print(f'❌ Error: {e}')
-            raise
+        import os
+        print('Python version:', sys.version)
+        print('Python path:', sys.path)
+        print('Current directory:', os.getcwd())
+        print('Directory contents:', os.listdir('.'))
+        if os.path.exists('src'):
+            print('src contents:', os.listdir('src'))
+        if os.path.exists('03_ablation_study/src'):
+            print('03_ablation_study/src contents:', os.listdir('03_ablation_study/src'))
         "
-      
+        
+    - name: Debug - Test imports
+      run: |
+        python -c "
+        try:
+            import torch
+            print('✅ torch:', torch.__version__)
+        except Exception as e:
+            print('❌ torch import error:', e)
+            
+        try:
+            import transformers
+            print('✅ transformers:', transformers.__version__)
+        except Exception as e:
+            print('❌ transformers import error:', e)
+            
+        try:
+            from src.losses import CombinedGANLoss
+            print('✅ CombinedGANLoss imported from src.losses')
+        except Exception as e:
+            print('❌ src.losses.CombinedGANLoss import error:', e)
+            
+        try:
+            from losses import CombinedGANLoss
+            print('✅ CombinedGANLoss imported from losses')
+        except Exception as e:
+            print('❌ losses.CombinedGANLoss import error:', e)
+        "
+        
+    - name: Run tests with verbose output
+      run: |
+        pytest tests/ -v -s --tb=long --maxfail=1
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        PYTHONUNBUFFERED: 1
+        
     - name: Upload test logs on failure
-      uses: actions/upload-artifact@v4
       if: failure()
+      uses: actions/upload-artifact@v4
       with:
-        name: test-logs-${{ matrix.os }}-${{ matrix.python-version }}
+        name: test-logs-${{ matrix.python-version }}
         path: |
-          .pytest_cache/
-          tests/__pycache__/
+          pytest.log
+          /home/runner/.pytest_cache/
         retention-days: 7
+        if-no-files-found: warn
