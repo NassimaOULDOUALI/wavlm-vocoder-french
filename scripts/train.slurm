@@ -37,7 +37,7 @@ cd "$WORK_DIR"
 
 # Environment setup
 module purge
-ENV_PREFIX="/lustre/fsn1/projects/rech/lsq/umv83if/conda_envs/torch_env"
+ENV_PREFIX="/path/env"
 export PATH="$ENV_PREFIX/bin:$PATH"
 
 echo "Working dir: $(pwd)"
