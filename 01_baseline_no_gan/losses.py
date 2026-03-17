@@ -50,7 +50,7 @@ class MultiScaleSTFTLoss(nn.Module):
         Returns:
             Scalar loss averaged over scales.
         """
-        total = torch.zeros(1, device=y_pred.device)
+        total = torch.zeros((), device=y_pred.device)  # scalar, not 1D
 
         for fft, hop, win in zip(self.fft_sizes, self.hop_sizes, self.win_sizes):
             window = torch.hann_window(win, device=y_pred.device)
@@ -94,10 +94,17 @@ class CombinedLoss(nn.Module):
         """
         Returns:
             total_loss: scalar
-            loss_dict:  {"loss", "l1", "stft"}
+            loss_dict:  {"loss", "l1", "stft"} — weighted contributions
         """
         l1   = F.l1_loss(y_pred, y_true)
         stft = self.stft_loss(y_pred, y_true)
-        total = self.l1_weight * l1 + self.stft_weight * stft
 
-        return total, {"loss": total.item(), "l1": l1.item(), "stft": stft.item()}
+        l1_contrib   = self.l1_weight * l1
+        stft_contrib = self.stft_weight * stft
+        total        = l1_contrib + stft_contrib
+
+        return total, {
+            "loss": total.item(),
+            "l1":   l1_contrib.item(),    # weighted: 0.0 if l1_weight=0
+            "stft": stft_contrib.item(),  # weighted: 0.0 if stft_weight=0
+        }
