@@ -1,0 +1,16 @@
+# .github/workflows/security.yml
+name: Security Scan
+on: [push, pull_request]
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bandit Scan
+        run: |
+          pip install bandit
+          bandit -r src/ -f html -o bandit.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bandit-report
+          path: bandit.html
