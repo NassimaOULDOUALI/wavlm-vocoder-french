@@ -36,7 +36,7 @@ import sys
 from pathlib import Path
 # Ajouter le dossier parent et le dossier models au path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-sys.path.append(str(Path(__file__).resolve().parent.parent / "models"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import argparse
 import copy

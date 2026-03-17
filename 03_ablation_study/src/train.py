@@ -2,7 +2,7 @@
 
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent / "models"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import os
 from pathlib import Path
@@ -22,9 +22,9 @@ from torch.cuda.amp import autocast, GradScaler
 from tqdm import tqdm
 import torchaudio
 
-from models_ablation import WavLM2AudioImproved
+from model import WavLM2AudioImproved
 from discriminators import MultiPeriodDiscriminator, MultiScaleDiscriminator
-from losses_gan import CombinedGANLoss, GANLoss
+from losses import CombinedGANLoss, GANLoss
 
 
 def set_seed(seed: int, rank: int):
