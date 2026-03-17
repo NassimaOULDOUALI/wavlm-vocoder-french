@@ -23,12 +23,12 @@ jobs:
     
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
       
       - name: 🔧 Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -59,7 +59,7 @@ jobs:
           echo "\`\`\`" >> bandit_summary.md
       
       - name: 📊 Upload SARIF to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: bandit_results.sarif
           category: bandit
@@ -67,7 +67,7 @@ jobs:
         continue-on-error: true  # Évite de faire échouer le workflow si problème de permission
       
       - name: 📤 Upload bandit report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bandit-reports
           path: |
