@@ -13,8 +13,8 @@ long_description = (this_directory / "README.md").read_text(encoding="utf-8")
 setup(
     name="wavlm-vocoder-french",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Nassima OULD OUALI",
+    author_email="nassima.ould-ouali@ip-paris.fr",
     description="Neural vocoder for French speech reconstruction from WavLM representations",
     long_description=long_description,
     long_description_content_type="text/markdown",
