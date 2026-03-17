@@ -1,86 +1,50 @@
 # Dependabot configuration pour WavLM Vocoder French
-# Mise à jour : 1er de chaque mois
+# Mise à jour : UNE FOIS PAR MOIS SEULEMENT
 ---
 version: 2
 updates:
-  # 1. DÉPENDANCES PYTHON
+  # 1. DÉPENDANCES PYTHON - UNE FOIS PAR MOIS
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "monthly"           # Changé de weekly à monthly
-      day: "monday"                  # Optionnel pour monthly
-      time: "09:00"
-      timezone: "Europe/Paris"
-    open-pull-requests-limit: 10
+      interval: "monthly"           # CHANGEMENT CRITIQUE: monthly seulement
+      # Pas de "day" ni de "time" pour monthly - ça force le 1er du mois
+    open-pull-requests-limit: 5     # Réduit à 5 pour éviter l'accumulation
     
-    # Configuration des groupes (inchangée)
+    # GROUPES (pour réduire le nombre de PRs)
     groups:
-      security-patches:
-        applies-to: version-updates
-        patterns: ["*"]
-        update-types: ["patch"]
-      dev-dependencies:
+      all-dependencies:              # UN SEUL GROUPE pour tout
         patterns:
-          - "pytest*"
-          - "black"
-          - "flake8"
-          - "isort"
-          - "coverage"
-          - "mypy"
-      data-science:
-        patterns:
-          - "matplotlib"
-          - "seaborn"
-          - "pandas"
-          - "scikit-learn"
-          - "jupyter*"
-          - "ipython"
-          - "notebook"
-          - "pillow"
-          - "tqdm"
-          - "pyyaml"
-          - "omegaconf"
-          - "hydra*"
+          - "*"                      # Toutes les dépendances ensemble
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
     
-    # Ignorer les mises à jour critiques (inchangé)
+    # IGNORER LES PACKAGES CRITIQUES
     ignore:
       - dependency-name: "torch"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "torchaudio"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "transformers"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "librosa"
-        update-types: ["version-update:semver-major"]
       - dependency-name: "numpy"
-        update-types: ["version-update:semver-major"]
       - dependency-name: "scipy"
-        update-types: ["version-update:semver-major"]
     
     labels:
       - "dependencies"
-      - "pip"
+      - "monthly-update"
     
-    commit-message:
-      prefix: "deps"
-      prefix-development: "deps(dev)"
-      include: "scope"
-    
-    rebase-strategy: "auto"
+    rebase-strategy: "disabled"      # Pas de rebase automatique
 
-  # 2. GITHUB ACTIONS
+  # 2. GITHUB ACTIONS - UNE FOIS PAR MOIS AUSSI
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "monthly"           # Changé de weekly à monthly
-      time: "10:00"
-      timezone: "Europe/Paris"
+      interval: "monthly"            # CHANGEMENT CRITIQUE: monthly
     labels:
       - "dependencies"
       - "github-actions"
+      - "monthly-update"
     groups:
-      github-actions:
+      all-actions:
         patterns: ["*"]
-    commit-message:
-      prefix: "ci"
-      include: "scope"
