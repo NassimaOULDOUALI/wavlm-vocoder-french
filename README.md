@@ -292,4 +292,12 @@ For questions, please open an issue or contact: **nassima.ould-ouali@ip-paris.fr
 
 ---
 
+
+
+![CI Tests](https://github.com/NassimaOULDOUALI/wavlm-vocoder-french/actions/workflows/ci.yml/badge.svg)
+![Quick Checks](https://github.com/NassimaOULDOUALI/wavlm-vocoder-french/actions/workflows/quick-checks.yml/badge.svg)
+![Python Versions](https://img.shields.io/badge/python-3.10%20|%203.11%20|%203.12-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+
 **Star ⭐ this repo if you find it useful!**
