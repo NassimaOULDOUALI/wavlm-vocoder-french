@@ -1,0 +1,132 @@
+# Dependabot configuration pour WavLM Vocoder French
+# Version: 2.0
+# Mainteneur: Nassima OULD OUALI
+
+version: 2
+updates:
+  # ============================================
+  # 1. DÉPENDANCES PYTHON (requirements.txt & setup.py)
+  # ============================================
+  - package-ecosystem: "pip"
+    directory: "/"  # Racine du projet
+    schedule:
+      interval: "weekly"      # Vérification hebdomadaire (moins de bruit)
+      day: "monday"           # Le lundi
+      time: "09:00"           # À 9h du matin
+      timezone: "Europe/Paris" # Fuseau horaire
+    open-pull-requests-limit: 10  # Max 10 PRs ouvertes en même temps
+    
+    # ⭐ GROUPES DE DÉPENDANCES (pour réduire le nombre de PRs)
+    groups:
+      # Groupe 1: Mises à jour de sécurité et patches
+      security-patches:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "patch"           # Uniquement les patches (bug fixes, sécurité)
+          
+      # Groupe 2: Dépendances de développement
+      dev-dependencies:
+        patterns:
+          - "pytest*"
+          - "black"
+          - "flake8"
+          - "isort"
+          - "coverage"
+          - "mypy"
+          
+      # Groupe 3: Dépendances de data science (non-critiques)
+      data-science:
+        patterns:
+          - "matplotlib"
+          - "seaborn"
+          - "pandas"
+          - "scikit-learn"
+          - "jupyter*"
+          - "ipython"
+          - "notebook"
+          - "pillow"
+          - "tqdm"
+          - "pyyaml"
+          - "omegaconf"
+          - "hydra*"
+          
+    # 📋 IGNORER CERTAINES DÉPENDANCES CRITIQUES
+    ignore:
+      # PyTorch - ne mettre à jour que manuellement (trop critique)
+      - dependency-name: "torch"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "torchaudio"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "torchvision"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      
+      # Transformers - ne mettre à jour que manuellement
+      - dependency-name: "transformers"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      
+      # Librosa - vérifier la compatibilité avant update
+      - dependency-name: "librosa"
+        update-types: ["version-update:semver-major"]
+      
+      # WavLM dépend de versions spécifiques
+      - dependency-name: "soundfile"
+        update-types: ["version-update:semver-major"]
+      
+      # NumPy - vérifier la compatibilité
+      - dependency-name: "numpy"
+        update-types: ["version-update:semver-major"]
+      
+      # SciPy
+      - dependency-name: "scipy"
+        update-types: ["version-update:semver-major"]
+    
+    # 🏷️ LABELS pour les PRs
+    labels:
+      - "dependencies"
+      - "pip"
+      - "automatic"
+    
+    # 📝 MESSAGES DE COMMIT
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps(dev)"
+      include: "scope"
+    
+    # 🔄 REBASING automatique
+    rebase-strategy: "auto"
+    
+    # ✅ VÉRIFIER LES PULL REQUESTS avec vos tests
+    pull-request-branch-name:
+      separator: "-"
+    
+    # ⏰ TIMEOUT et retry
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "Europe/Paris"
+
+  # ============================================
+  # 2. GITHUB ACTIONS (vos workflows CI/CD)
+  # ============================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "Europe/Paris"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci"
+    groups:
+      github-actions:
+        patterns:
+          - "*"  # Groupe toutes les actions ensemble
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+
