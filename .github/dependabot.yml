@@ -1,4 +1,5 @@
 # Dependabot configuration pour WavLM Vocoder French
+# Mise à jour : 1er de chaque mois
 ---
 version: 2
 updates:
@@ -6,11 +7,13 @@ updates:
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"           # Changé de weekly à monthly
+      day: "monday"                  # Optionnel pour monthly
       time: "09:00"
       timezone: "Europe/Paris"
     open-pull-requests-limit: 10
+    
+    # Configuration des groupes (inchangée)
     groups:
       security-patches:
         applies-to: version-updates
@@ -38,6 +41,8 @@ updates:
           - "pyyaml"
           - "omegaconf"
           - "hydra*"
+    
+    # Ignorer les mises à jour critiques (inchangé)
     ignore:
       - dependency-name: "torch"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
@@ -51,21 +56,23 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "scipy"
         update-types: ["version-update:semver-major"]
+    
     labels:
       - "dependencies"
       - "pip"
+    
     commit-message:
       prefix: "deps"
       prefix-development: "deps(dev)"
       include: "scope"
+    
     rebase-strategy: "auto"
 
   # 2. GITHUB ACTIONS
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-      day: "monday"
+      interval: "monthly"           # Changé de weekly à monthly
       time: "10:00"
       timezone: "Europe/Paris"
     labels:
