@@ -232,7 +232,7 @@ layer_fusion:
 | Model | Layers | GAN | MCD | PESQ | Download |
 |-------|--------|-----|-----|------|----------|
 | Baseline | 12 | ❌ | 9.72 | 1.11 | [Link](#) |
-| Best (N=9) | 9 | ✅ | **8.43** | **1.28** | [Link](#) |
+| Best (N=9) | 9 | ✅ | **8.43** | **1.28** | [Link](https://huggingface.co/nassimaODL/wavlm-vocoder-french/blob/main/checkpoint_step180000.pt) |
 | Lightweight (N=6) | 6 | ✅ | 8.89 | 1.21 | [Link](#) |
 
 ---
