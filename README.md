@@ -1,20 +1,19 @@
 # WavLM Vocoder for French 🎙️🇫🇷
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-red.svg)](https://pytorch.org/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.1+-red.svg)](https://pytorch.org/)
 
-> **Vocodage WavLM vers audio en français : Ablation des couches et supervision adversariale**  
+> **Vocodage WavLM vers audio en français : Ablation des couches et supervision adversariale**
 > Neural vocoder for reconstructing high-quality French speech from WavLM representations
 
-📄 **Paper**: [Vocodage WavLM vers audio en français](docs/paper/JEP_2026_WavLM_Vocodeur.pdf)  
 🎯 **Goal**: Stage 1 foundation for continuous voice conversion in WavLM latent space
 
 ---
 
 ## 🎯 Overview
 
-This repository implements a neural vocoder that reconstructs audio from frozen **WavLM-Base+** representations, specifically trained and evaluated on French speech corpora. 
+This repository implements a neural vocoder that reconstructs audio from frozen **WavLM-Base+** representations, specifically trained and evaluated on French speech corpora.
 
 ### Key Features
 
@@ -24,7 +23,6 @@ This repository implements a neural vocoder that reconstructs audio from frozen 
 - ✅ **Learned Layer Fusion**: Weighted combination vs. simple averaging
 - ✅ **Adversarial Training**: MPD/MSD discriminators + Feature Matching
 - ✅ **French Corpora**: SIWIS (10.9h) + M-AILABS (160.7h) + Common Voice (66.7h) = 238.3h
-- ✅ **Comprehensive Metrics**: MCD, PESQ, STOI, F0-RMSE, V/UV F1
 
 ### Architecture
 ```
@@ -54,70 +52,59 @@ This repository implements a neural vocoder that reconstructs audio from frozen 
 > - Layers 7-12 capture most phonetic-prosodic information
 > - Learned layer fusion outperforms fixed single-layer extraction
 
+Full ablation results: [`results_ablation_N1to6.csv`](results_ablation_N1to6.csv) and [`results_FINAL.csv`](results_FINAL.csv)
+
 ---
 
 ## 🚀 Quick Start
 
 ### 1. Installation
 ```bash
-# Clone repository
 git clone https://github.com/NassimaOULDOUALI/wavlm-vocoder-french.git
 cd wavlm-vocoder-french
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Install package in editable mode
 pip install -e .
 ```
 
-See [docs/INSTALL.md](docs/INSTALL.md) for detailed setup instructions.
-
-### 2. Data Preparation
+For evaluation metrics (PESQ, STOI, F0):
 ```bash
-# Download datasets
-bash scripts/download_data.sh
-
-# Preprocess audio (normalize, filter, detect silence)
-python scripts/preprocess_data.py \
-    --input_dir data/raw \
-    --output_dir data/processed \
-    --sample_rate 16000
+pip install -e ".[eval]"
 ```
 
-### 3. Training
+### 2. Training
 ```bash
-# Train without GAN (baseline)
-bash scripts/train_model.sh --config configs/no_gan_config.yaml
+# Single GPU — no GAN baseline
+python scripts/train.py --config configs/experiments/no_gan.yaml
 
-# Train with GAN supervision
-bash scripts/train_model.sh --config configs/with_gan_config.yaml
+# Single GPU — full GAN model
+python scripts/train.py --config configs/experiments/gan.yaml
 
-# Layer ablation experiments
-bash scripts/train_model.sh --config configs/layer_ablation_config.yaml --num_layers 9
+# Multi-GPU with torchrun
+torchrun --standalone --nproc_per_node=4 scripts/train.py --config configs/experiments/gan.yaml
 ```
 
-See [docs/TRAINING.md](docs/TRAINING.md) for advanced training options.
-
-### 4. Evaluation
+### 3. Layer Ablation
 ```bash
-# Evaluate on test set
-python scripts/evaluate_model.sh \
-    --checkpoint outputs/checkpoints/best_model.pt \
-    --test_dir data/processed/test \
-    --output_dir outputs/evaluation
+python scripts/run_ablation.py \
+    --base_config configs/experiments/ablation_layers.yaml \
+    --output_dir outputs/ablation \
+    --layers 1,2,3,4,6,9,12
 ```
 
-See [docs/EVALUATION.md](docs/EVALUATION.md) for metric details.
-
-### 5. Inference
+### 4. Inference
 ```bash
-# Reconstruct audio from WavLM representations
-python scripts/inference.py \
-    --checkpoint outputs/checkpoints/best_model.pt \
-    --input_audio examples/sample.wav \
-    --output_audio outputs/samples/reconstructed.wav \
-    --num_layers 9
+python scripts/infer.py \
+    --checkpoint outputs/checkpoints/checkpoint_best.pt \
+    --input_dir /path/to/audio \
+    --output_dir outputs/samples \
+    --num_samples 10
+```
+
+### 5. Evaluation
+```bash
+python scripts/eval.py \
+    --checkpoint outputs/checkpoints/checkpoint_best.pt \
+    --test_dir /path/to/test/audio \
+    --output_dir outputs/eval_results
 ```
 
 ---
@@ -127,118 +114,99 @@ python scripts/inference.py \
 wavlm-vocoder-french/
 ├── src/
 │   ├── models/
-│   │   ├── adapter.py              # WavLM adapter (768→256)
-│   │   ├── generator.py            # HiFi-GAN generator
-│   │   ├── discriminator.py        # MPD/MSD discriminators
-│   │   ├── wavlm_vocoder.py        # Main vocoder class
-│   │   └── layer_fusion.py         # Learned layer weighting
-│   ├── dataset/
-│   │   ├── audio_dataset.py        # PyTorch dataset
-│   │   └── preprocessing.py        # Audio cleaning pipeline
-│   ├── training/
-│   │   ├── train.py                # Training script
-│   │   ├── losses.py               # L1, Mel, STFT, Adv, FM losses
-│   │   └── trainer.py              # DDP/AMP trainer
-│   ├── evaluation/
-│   │   ├── metrics.py              # MCD, PESQ, STOI, F0, V/UV
-│   │   └── evaluate.py             # Evaluation pipeline
+│   │   ├── adapter.py          # WavLM adapter (768→256) + LayerFusion
+│   │   ├── generator.py        # HiFi-GAN generator (×320 upsampling)
+│   │   ├── discriminator.py    # MPD/MSD discriminators
+│   │   └── wavlm_vocoder.py    # Main vocoder (WavLM + adapter + generator)
+│   ├── losses/
+│   │   ├── reconstruction.py   # L1 + Multi-Scale STFT losses
+│   │   ├── gan.py              # Adversarial + Feature Matching losses
+│   │   └── combined.py         # Combined loss (reconstruction + GAN)
+│   ├── data/
+│   │   ├── dataset.py          # AudioDataset (segmentation, normalization)
+│   │   └── collate.py          # Collate function for DataLoader
+│   ├── trainers/
+│   │   └── trainer.py          # DDP/AMP trainer with checkpointing
 │   └── utils/
-│       ├── audio_processing.py     # Chunk inference, windowing
-│       └── logger.py               # TensorBoard logging
+│       ├── audio.py            # load/save audio, chunked inference
+│       ├── audio_processing.py # Audio processing utilities
+│       ├── checkpoint.py       # Save/load checkpoints
+│       ├── config.py           # YAML config loading with inheritance
+│       └── logging.py          # Logging setup
 ├── configs/
-│   ├── base_config.yaml            # Shared hyperparameters
-│   ├── no_gan_config.yaml          # Baseline (spectral losses only)
-│   ├── with_gan_config.yaml        # Full model (MPD/MSD+FM)
-│   └── layer_ablation_config.yaml  # Layer sweep experiments
+│   ├── base.yaml               # Base hyperparameters
+│   └── experiments/
+│       ├── no_gan.yaml         # Baseline (spectral losses only)
+│       ├── gan.yaml            # Full model (MPD/MSD + FM)
+│       └── ablation_layers.yaml # Layer sweep experiments
 ├── scripts/
-│   ├── download_data.sh            # Download SIWIS, M-AILABS, CommonVoice
-│   ├── preprocess_data.py          # Audio cleaning & filtering
-│   ├── train_model.sh              # Multi-GPU training launcher
-│   ├── evaluate_model.sh           # Compute all metrics
-│   └── inference.py                # Reconstruct from checkpoint
-├── notebooks/
-│   ├── 1_data_exploration.ipynb    # Corpus statistics
-│   ├── 2_model_architecture.ipynb  # Visualize layers, weights
-│   └── 3_results_analysis.ipynb    # Plot metrics, ablations
+│   ├── train.py                # Training entry point
+│   ├── infer.py                # Inference on audio files
+│   ├── eval.py                 # Evaluation script
+│   ├── run_ablation.py         # Layer ablation study runner
+│   └── analyze_ablation_results.py # Ablation results analysis
 ├── tests/
-│   ├── test_models.py              # Unit tests for architectures
-│   ├── test_dataset.py             # Dataset loading tests
-│   └── test_losses.py              # Loss function tests
-├── docs/
-│   ├── INSTALL.md                  # Installation guide
-│   ├── TRAINING.md                 # Training instructions
-│   ├── EVALUATION.md               # Metrics & evaluation
-│   ├── REPRODUCTION.md             # Reproduce paper results
-│   └── paper/
-│       └── JEP_2026_WavLM_Vocodeur.pdf  # Accepted paper
-├── requirements.txt                # Python dependencies
-├── setup.py                        # Package setup
-├── README.md                       # This file
-├── LICENSE                         # MIT License
-└── CITATION.bib                    # BibTeX citation
+│   ├── test_models.py          # Model architecture tests
+│   ├── test_losses.py          # Loss function tests
+│   ├── test_dataset.py         # Dataset/collate tests
+│   └── test_training.py        # Training components tests
+├── paper_assets/
+│   └── docs/
+│       ├── figures/            # Ablation plots (PDF/PNG)
+│       └── layer_importance_table.tex
+├── outputs/
+│   ├── samples/sweep_outputs/  # Audio samples at ckpt 160k/180k/200k
+│   └── logs/                   # TensorBoard event files
+├── results_ablation_N1to6.csv  # Ablation study results
+├── results_FINAL.csv           # Final model results
+├── pyproject.toml              # Package config + black/ruff/pytest settings
+├── requirements.txt            # Python dependencies
+├── setup.py                    # Package setup
+├── LICENSE                     # MIT License
+└── CITATION.bib                # BibTeX citation
 ```
-
----
-
-## 📖 Documentation
-
-- **[Installation Guide](docs/INSTALL.md)**: Detailed setup (CUDA, dependencies, data)
-- **[Training Guide](docs/TRAINING.md)**: Hyperparameters, DDP/AMP, early stopping
-- **[Evaluation Guide](docs/EVALUATION.md)**: Metric calculation, test protocols
-- **[Reproduction Guide](docs/REPRODUCTION.md)**: Exact commands to reproduce paper results
 
 ---
 
 ## 🔬 Key Experiments
 
-### Experiment 1: GAN vs. No-GAN
+### GAN vs. No-GAN
 ```bash
-# Baseline (spectral losses only)
-python src/training/train.py --config configs/no_gan_config.yaml
-
-# With adversarial supervision
-python src/training/train.py --config configs/with_gan_config.yaml
+python scripts/train.py --config configs/experiments/no_gan.yaml
+python scripts/train.py --config configs/experiments/gan.yaml
 ```
+**Result**: GAN provides 13-24% improvement in spectral fidelity.
 
-**Result**: GAN provides 13-24% improvement in spectral fidelity and 16% in perceptual quality.
-
-### Experiment 2: Layer Ablation
+### Layer Ablation (N=1..12)
 ```bash
-# Test N=1,2,...,12 last layers
-for N in {1..12}; do
-    python src/training/train.py \
-        --config configs/layer_ablation_config.yaml \
-        --num_layers $N
-done
+python scripts/run_ablation.py \
+    --base_config configs/experiments/ablation_layers.yaml \
+    --layers 1,2,3,4,6,9,12
 ```
+**Result**: N=9 layers (7-12) is optimal.
 
-**Result**: Layers 9-12 are optimal (sufficient information without redundancy).
-
-### Experiment 3: Learned Fusion vs. Averaging
-```yaml
-# In config file:
-layer_fusion:
-  mode: "learned"  # or "average"
-  num_layers: 9
+### Analyze Ablation Results
+```bash
+python scripts/analyze_ablation_results.py \
+    --output_dir outputs/ablation
 ```
-
-**Result**: Learned fusion (weighted α) outperforms simple averaging.
 
 ---
 
 ## 📦 Pretrained Checkpoints
 
-| Model | Layers | GAN | MCD | PESQ | Download |
-|-------|--------|-----|-----|------|----------|
-| Baseline | 12 | ❌ | 9.72 | 1.11 | [Link](#) |
-| Best (N=9) | 9 | ✅ | **8.43** | **1.28** | [Link](#) |
-| Lightweight (N=6) | 6 | ✅ | 8.89 | 1.21 | [Link](#) |
+| Model | Layers | GAN | MCD | PESQ |
+|-------|--------|-----|-----|------|
+| Baseline | 12 | ❌ | 9.72 | 1.11 |
+| **Best (N=9)** | 9 | ✅ | **8.43** | **1.28** |
+| Lightweight (N=6) | 6 | ✅ | 8.89 | 1.21 |
+
+> Checkpoints not included in this repository due to size (~1.4GB each).
+> See [`outputs/samples/sweep_outputs/`](outputs/samples/sweep_outputs/) for audio samples.
 
 ---
 
 ## 🎓 Citation
-
-If you use this work, please cite our paper:
 ```bibtex
 @inproceedings{wavlm_vocoder_french_2026,
   title={Vocodage WavLM vers audio en français : Ablation des couches et supervision adversariale comme fondation pour la conversion de voix continue},
@@ -252,7 +220,7 @@ If you use this work, please cite our paper:
 
 ## 📜 License
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
+MIT License — see [LICENSE](LICENSE).
 
 ---
 
@@ -261,25 +229,12 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) file.
 - **WavLM**: Microsoft Research ([Chen et al., 2022](https://arxiv.org/abs/2110.13900))
 - **HiFi-GAN**: [Kong et al., 2020](https://arxiv.org/abs/2010.05646)
 - **Datasets**: SIWIS, M-AILABS, Common Voice
-- **Metrics**: WORLD vocoder, CREPE pitch tracker
-
----
-
-## 🛠️ Contributing
-
-Contributions are welcome! Please see our [Contributing Guidelines](CONTRIBUTING.md).
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ---
 
 ## 📧 Contact
 
-For questions, please open an issue or contact: **nassima.ould-ouali@ip-paris.fr**
+For questions, open an issue or contact: **nassima.ould-ouali@ip-paris.fr**
 
 ---
 
@@ -288,8 +243,3 @@ For questions, please open an issue or contact: **nassima.ould-ouali@ip-paris.fr
 - [x] Stage 1: Reconstruction vocoder (this work)
 - [ ] Stage 2: Voice conversion in WavLM latent space
 - [ ] Stage 3: Diffusion/Flow-based manipulation
-- [ ] Real-time inference optimization
-
----
-
-**Star ⭐ this repo if you find it useful!**
