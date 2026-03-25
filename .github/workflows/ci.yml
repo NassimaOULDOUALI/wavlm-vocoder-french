@@ -1,0 +1,76 @@
+name: CI — WavLM Vocoder French
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install system deps
+        run: sudo apt-get update -q && sudo apt-get install -y -q libsndfile1
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install PyTorch (CPU)
+        run: |
+          pip install torch==2.3.0 torchaudio==2.3.0 --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install project dependencies
+        run: |
+          pip install transformers>=4.30.0 soundfile PyYAML tqdm pytest pytest-cov
+
+      - name: Syntax check — all Python files
+        run: |
+          find . -name "*.py" ! -path "./.git/*" -exec python -m py_compile {} \;
+          echo "All files compile cleanly."
+
+      - name: Run tests
+        env:
+          PYTHONPATH: ${{ github.workspace }}/01_baseline_no_gan:${{ github.workspace }}/02_gan_vocoder/src:${{ github.workspace }}/03_ablation_study/src
+        run: |
+          pytest tests/ -v --timeout=60 --tb=short -x
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-logs-${{ matrix.python-version }}
+          path: .pytest_cache/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## CI — Python ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+          echo "Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

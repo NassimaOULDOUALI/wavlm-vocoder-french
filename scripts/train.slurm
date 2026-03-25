@@ -5,8 +5,8 @@
 #SBATCH --constraint=h100
 #SBATCH --qos=qos_gpu_h100-t3
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --gres=gpu:4
+#SBATCH --ntasks-per-node=1
+#SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=32
 #SBATCH --hint=nomultithread
 #SBATCH --time=20:00:00
@@ -37,7 +37,7 @@ cd "$WORK_DIR"
 
 # Environment setup
 module purge
-ENV_PREFIX="/lustre/fsn1/projects/rech/lsq/umv83if/conda_envs/torch_env"
+ENV_PREFIX="/path/env"
 export PATH="$ENV_PREFIX/bin:$PATH"
 
 echo "Working dir: $(pwd)"

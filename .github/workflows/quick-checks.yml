@@ -1,0 +1,33 @@
+---
+name: Quick Checks
+
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      
+      - name: Install tools
+        run: |
+          pip install black flake8 isort
+      
+      - name: Run Black
+        run: black --check src/ tests/ || echo "::warning::Black found issues"
+        
+      - name: Run isort
+        run: isort --check-only src/ tests/ || echo "::warning::isort found issues"
+        
+      - name: Run flake8
+        run: flake8 src/ tests/ --max-line-length=120 || echo "::warning::flake8 found issues"
+        
+      - name: Summary
+        if: always()
+        run: |
+          echo "✅ Quick checks completed with warnings if any" >> $GITHUB_STEP_SUMMARY
