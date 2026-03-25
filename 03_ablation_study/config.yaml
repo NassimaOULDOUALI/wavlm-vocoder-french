@@ -1,0 +1,49 @@
+# config_gan.yaml — ablation study
+
+model:
+  wavlm_model_name: microsoft/wavlm-base-plus
+  hidden_dim: 256
+  num_adapter_layers: 6
+  kernel_size: 7
+  freeze_wavlm: true
+  dropout: 0.1
+
+  # === Ablation ===
+  # last           : uniquement last_hidden_state
+  # last_n_mean    : h = (1/N) * sum_{l in last N} h^(l)  (indices 1..12, on exclut l'embedding 0)
+  # weighted_all   : somme pondérée apprise sur toutes les couches (option baseline)
+  feature_mode: weighted_all
+  wavlm_last_n: 1
+
+  use_snake: false
+
+loss:
+  l1_weight: 1.0
+  mel_weight: 45.0
+  stft_weight: 1.0
+  fm_weight: 2.0
+
+data:
+  train_dir: "/path/to/corpus"
+  segment_length: 32000
+  sample_rate: 16000
+  use_rms_norm: false
+  rms_threshold: 0.005
+  peak_target: 0.95
+
+training:
+  lr_g: 2e-4
+  lr_d: 2e-4
+  batch_size: 16
+  num_epochs: 100
+  grad_clip: 1.0
+  use_amp: true
+  weight_decay: 0.01
+
+  # sera override par --output_dir dans le slurm
+  output_dir: "./outputs_ablation"
+  save_interval: 2000
+  num_workers: 4
+  resume: false
+
+  seed: 1234

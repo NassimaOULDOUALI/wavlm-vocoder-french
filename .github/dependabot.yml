@@ -1,0 +1,50 @@
+# Dependabot configuration pour WavLM Vocoder French
+# Mise à jour : UNE FOIS PAR MOIS SEULEMENT
+---
+version: 2
+updates:
+  # 1. DÉPENDANCES PYTHON - UNE FOIS PAR MOIS
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"           # CHANGEMENT CRITIQUE: monthly seulement
+      # Pas de "day" ni de "time" pour monthly - ça force le 1er du mois
+    open-pull-requests-limit: 5     # Réduit à 5 pour éviter l'accumulation
+    
+    # GROUPES (pour réduire le nombre de PRs)
+    groups:
+      all-dependencies:              # UN SEUL GROUPE pour tout
+        patterns:
+          - "*"                      # Toutes les dépendances ensemble
+        update-types:
+          - "major"
+          - "minor"
+          - "patch"
+    
+    # IGNORER LES PACKAGES CRITIQUES
+    ignore:
+      - dependency-name: "torch"
+      - dependency-name: "torchaudio"
+      - dependency-name: "transformers"
+      - dependency-name: "librosa"
+      - dependency-name: "numpy"
+      - dependency-name: "scipy"
+    
+    labels:
+      - "dependencies"
+      - "monthly-update"
+    
+    rebase-strategy: "disabled"      # Pas de rebase automatique
+
+  # 2. GITHUB ACTIONS - UNE FOIS PAR MOIS AUSSI
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"            # CHANGEMENT CRITIQUE: monthly
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "monthly-update"
+    groups:
+      all-actions:
+        patterns: ["*"]

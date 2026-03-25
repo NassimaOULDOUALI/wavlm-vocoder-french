@@ -1,0 +1,38 @@
+# =============================================================================
+# 01 — Baseline vocoder (no GAN)
+# Architecture: WavLM-Base+ (frozen) → Adapter → HiFiGenerator
+# Loss: L1 waveform + multi-scale STFT
+# =============================================================================
+
+model:
+  # Local path or HuggingFace model ID for WavLM-Base+
+  wavlm_model_name: "microsoft/wavlm-base-plus"
+  hidden_dim: 256
+  num_adapter_layers: 6
+  kernel_size: 7
+  freeze_wavlm: true
+  dropout: 0.1
+
+loss:
+  stft_weight: 1.0
+  l1_weight: 0.5
+
+data:
+  train_dir: "/path/to/corpus"   # REQUIRED — root dir with audio files
+  segment_length: 32000          # samples  (= 2 s at 16 kHz)
+  sample_rate: 16000             # Hz
+  use_rms_norm: false
+  rms_threshold: 0.005
+  peak_target: 0.99
+
+training:
+  lr: 1.0e-4
+  batch_size: 16                 # per GPU
+  num_epochs: 100
+  grad_clip: 1.0
+  use_amp: true
+  weight_decay: 0.01
+  output_dir: "./outputs"
+  save_interval: 5000            # steps between checkpoints
+  num_workers: 4
+  resume: false                  # path to checkpoint or false

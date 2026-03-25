@@ -1,0 +1,51 @@
+# =============================================================================
+# 02 — GAN vocoder
+# Architecture: WavLM-Base+ (frozen) → Adapter → HiFiGenerator
+# Supervision:  L1 + Mel + multi-STFT + MPD/MSD adversarial + Feature Matching
+# =============================================================================
+
+model:
+  wavlm_model_name: "microsoft/wavlm-base-plus"
+  hidden_dim: 256
+  num_adapter_layers: 6
+  kernel_size: 7
+  freeze_wavlm: true
+  dropout: 0.1
+
+  # Layer fusion strategy (see model.py for options)
+  #   last           : last_hidden_state only
+  #   last_n_mean    : uniform average of the N last layers
+  #   weighted_all   : learnable softmax over all 13 hidden states
+  #   weighted_last_n: learnable softmax over the N last layers  ← best (paper)
+  feature_mode: "weighted_last_n"
+  wavlm_last_n: 7      # layers 6-12  (best config from ablation study)
+
+  use_snake: false     # Snake activation (BigVGAN style)
+
+loss:
+  l1_weight: 1.0
+  mel_weight: 45.0     # high weight as recommended by HiFi-GAN
+  stft_weight: 1.0
+  fm_weight: 2.0       # feature matching weight
+
+data:
+  train_dir: "/path/to/corpus"   # REQUIRED
+  segment_length: 32000          # 2 s at 16 kHz
+  sample_rate: 16000
+  use_rms_norm: false
+  rms_threshold: 0.005
+  peak_target: 0.95
+
+training:
+  lr_g: 2.0e-4
+  lr_d: 2.0e-4
+  batch_size: 16          # per GPU
+  num_epochs: 100
+  grad_clip: 1.0
+  use_amp: true
+  weight_decay: 0.01
+  output_dir: "./outputs"
+  save_interval: 2000
+  num_workers: 4
+  resume: false
+  seed: 1234
