@@ -1,0 +1,135 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wavlm-vocoder-french"
+version = "0.1.0"
+description = "WavLM-to-audio neural vocoder for French speech resynthesis and voice conversion research."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+  { name = "Nassima Ould Ouali" }
+]
+keywords = [
+  "tts",
+  "speech",
+  "vocoder",
+  "wavlm",
+  "voice-conversion",
+  "french",
+  "hifigan",
+  "self-supervised-learning"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Multimedia :: Sound/Audio :: Speech"
+]
+
+dependencies = [
+  "torch>=2.1.0",
+  "torchaudio>=2.1.0",
+  "transformers>=4.38.0",
+  "accelerate>=0.27.0",
+  "numpy>=1.24,<3",
+  "scipy>=1.10.0",
+  "librosa>=0.10.1",
+  "soundfile>=0.12.1",
+  "PyYAML>=6.0",
+  "tqdm>=4.66.0",
+  "tensorboard>=2.14.0"
+]
+
+[project.optional-dependencies]
+eval = [
+  "pesq>=0.0.4",
+  "pystoi>=0.3.3",
+  "pyworld>=0.3.4"
+]
+
+dev = [
+  "pytest>=8.0.0",
+  "pytest-cov>=5.0.0",
+  "black>=24.0.0",
+  "ruff>=0.6.0",
+  "isort>=5.13.0",
+  "mypy>=1.10.0",
+  "pre-commit>=3.7.0"
+]
+
+analysis = [
+  "matplotlib>=3.8.0",
+  "pandas>=2.2.0",
+  "jupyter>=1.0.0"
+]
+
+all = [
+  "wavlm-vocoder-french[eval,dev,analysis]"
+]
+
+[project.urls]
+Homepage = "https://github.com/NassimaOULDOUALI/wavlm-vocoder-french"
+Repository = "https://github.com/NassimaOULDOUALI/wavlm-vocoder-french"
+Issues = "https://github.com/NassimaOULDOUALI/wavlm-vocoder-french/issues"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+exclude = [
+  "tests*",
+  "data*",
+  "outputs*",
+  "01_baseline_no_gan*",
+  "02_gan_vocoder*",
+  "03_ablation_study*"
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.black]
+line-length = 100
+target-version = ["py310", "py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+  "I",
+  "W",
+  "UP",
+  "B"
+]
+ignore = [
+  "E501"
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
