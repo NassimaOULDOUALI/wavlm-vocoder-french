@@ -74,3 +74,5 @@ temp/
 !outputs/checkpoints/.gitkeep
 !outputs/logs/.gitkeep
 !outputs/samples/.gitkeep
+outputs/logs/*.out.tfevents.*
+outputs/logs/train.log
