@@ -7,7 +7,6 @@ experiment:
   name: "layer_ablation"
   description: "Systematic ablation of WavLM layers"
 
-# This will be overridden by run_ablation.py script
 model:
   num_layers: ${num_layers}  # Will be set by script: 1, 2, ..., 12
   fusion_type: "average"  # Start with simple averaging
