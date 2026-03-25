@@ -1,0 +1,28 @@
+% Tableau généré automatiquement par analyze_layer_importance_enhanced.py
+% À insérer dans le papier JEP 2026
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{c c c c c}
+\toprule
+\textbf{Layer $\ell$} &
+\textbf{\#configs} &
+\textbf{$\text{moy}(\alpha)$} &
+\textbf{$\text{std}(\alpha)$} &
+\textbf{[min, max]} \\
+\midrule
+\rowcolor{green!20}
+ 7 & 1 & 0.6775 & 0.0000 & [0.6775, 0.6775] \\
+ 8 & 2 & 0.2451 & 0.2017 & [0.0434, 0.4467] \\
+ 9 & 3 & 0.1087 & 0.0848 & [0.0377, 0.2279] \\
+\rowcolor{green!20}
+10 & 4 & 0.2805 & 0.1500 & [0.0794, 0.4752] \\
+11 & 5 & 0.2795 & 0.1729 & [0.0776, 0.5917] \\
+\rowcolor{green!20}
+12 & 6 & 0.3311 & 0.3174 & [0.0844, 1.0000] \\
+\bottomrule
+\end{tabular}
+\caption{Importance moyenne des couches WavLM-Base+ (poids de fusion apprise) agrégée sur les configurations où chaque couche apparaît. Les 3 couches les plus importantes sont surlignées.}
+\label{tab:layer_importance_stats}
+\end{table}

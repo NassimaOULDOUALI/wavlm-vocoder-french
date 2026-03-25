@@ -1,0 +1,5 @@
+model:
+  wavlm_model_name: microsoft/wavlm-base-plus  
+data:
+  sample_rate: 16000
+  segment_length: 16000
