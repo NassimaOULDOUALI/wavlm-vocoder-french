@@ -1,8 +1,12 @@
-⚠️ THIS REPOSITORY IS ARCHIVED
-
-This repository was used as an exploratory working base for testing, debugging, and iterating on what works and what does not. It contains known implementation issues, including problems related to the adversarial loss, the λ weighting coefficients, and hyperparameter settings. Therefore, it should not be used to reproduce the results reported in the paper.
-
-The active and corrected repository is available here → hi-paris/wavlm-vocoder-french
+> [!WARNING]
+> **THIS REPOSITORY IS ARCHIVED**
+>
+> This repository was used as an exploratory working base for testing, debugging, and iterating on what works and what does not. It contains known implementation issues, including problems related to the adversarial loss, the λ weighting coefficients, and hyperparameter settings.
+>
+> This repository should **not** be used to reproduce the results reported in the paper.
+>
+> The active and corrected repository is available here:  
+> 👉 [hi-paris/wavlm-vocoder-french](https://github.com/hi-paris/wavlm-vocoder-french)
 
 # WavLM Vocoder for French 🎙️🇫🇷
 
